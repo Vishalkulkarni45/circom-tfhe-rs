@@ -34,6 +34,17 @@ template mpspdz(N) {
     for (var i = 0; i < N; i++) {
        out_eq[i] <== in1_eq[i] == in2_eq[i];
     }
+
+   // NEQ = 'ANeq'
+
+    signal input in1_neq[N];
+    signal input in2_neq[N];
+    signal output out_neq[N];
+
+    for (var i = 0; i < N; i++) {
+       out_neq[i] <== in1_neq[i] != in2_neq[i];
+    }
+    
     
     // GT = 'AGt'
 
@@ -85,15 +96,6 @@ template mpspdz(N) {
        out_mul[i] <== in1_mul[i] * in2_mul[i];
     }
 
-    // NEQ = 'ANeq'
-
-    signal input in1_neq[N];
-    signal input in2_neq[N];
-    signal output out_neq[N];
-
-    for (var i = 0; i < N; i++) {
-       out_neq[i] <== in1_neq[i] != in2_neq[i];
-    }
     
     // SUB = 'ASub'
 
@@ -109,43 +111,44 @@ template mpspdz(N) {
 
     // XOR = 'AXor',
 
-   //  signal input in1_xor[N];
-   //  signal input in2_xor[N];
-   //  signal output out_xor[N];
+     signal input in1_xor[N];
+     signal input in2_xor[N];
+     signal output out_xor[N];
 
-   //  for (var i = 0; i < N; i++) {
-   //     out_xor[i] <== in1_xor[i] ^ in2_xor[i];
-   //  }
+     for (var i = 0; i < N; i++) {
+        out_xor[i] <== in1_xor[i] ^ in2_xor[i];
+     }
 
-    // POW = 'APow',
+   // MOD = 'AMod',
 
-    signal input in1_pow[N];
-    signal input in2_pow[N];
-    signal output out_pow[N];
+     signal input in1_mod[N];
+     signal input in2_mod[N];
+     signal output out_mod[N];
 
-    for (var i = 0; i < N; i++) {
-       out_pow[i] <== in1_pow[i] ** in2_pow[i];
-    }
+     for (var i = 0; i < N; i++) {
+        out_mod[i] <== in1_mod[i] % in2_mod[i];
+     }
+
+   // Or = 'ABoolOr',
+
+     signal input in1_or[N];
+     signal input in2_or[N];
+     signal output out_or[N];
+
+     for (var i = 0; i < N; i++) {
+        out_or[i] <== in1_or[i] | in2_or[i];
+     }
+
+        // Or = 'ABoolOr',
+
+     signal input in1_and[N];
+     signal input in2_and[N];
+     signal output out_and[N];
+
+     for (var i = 0; i < N; i++) {
+        out_and[i] <== in1_and[i] & in2_and[i];
+     }
     
-    // IDIV = 'AIntDiv',
-
-    signal input in1_idiv[N];
-    signal input in2_idiv[N];
-    signal output out_idiv[N];
-
-    for (var i = 0; i < N; i++) {
-       out_idiv[i] <== in1_idiv[i] \ in2_idiv[i];
-    }
-
-    // MOD = 'AMod',
-
-   //  signal input in1_mod[N];
-   //  signal input in2_mod[N];
-   //  signal output out_mod[N];
-
-   //  for (var i = 0; i < N; i++) {
-   //      out_mod[i] <== in1_mod[i] % in2_mod[i];
-   //  }
 
     // SHL = 'AShiftL',
 
@@ -168,4 +171,4 @@ template mpspdz(N) {
     }   
 }
 
-component main = mpspdz(100);
+component main = mpspdz(5);

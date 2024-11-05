@@ -1,22 +1,8 @@
 import random
 
-in1txt = "0.in1";
-in2txt = "0.in2";
-outtxt = "0.out";
-
-N = 10;
-cnt = 0;
-in2_val = random.randint(1, 10);
-
 inputs = {};
-for i in range(N):
-    in1str = in1txt + "["+ str(i) + "]";
-    inputs[in1str] = random.randint(1, 10);
-    if inputs[in1str] == in2_val:
-        cnt += 1
-
-inputs["0.in2"] = in2_val
-#inputs["out"] = cnt
+inputs["0.a"] = random.randint(1, 10);
+inputs["0.b"] = random.randint(1, 10);
 
 import json
 
@@ -24,7 +10,6 @@ with open('input.json', 'w') as fp:
     json.dump(inputs, fp);
 
 raw_code = '''
-
 use std::collections::HashMap;
 use regex::Regex;
 use serde_json::to_string;
@@ -39,8 +24,8 @@ use tfhe::FheUint;
 use tfhe::{generate_keys, set_server_key, ConfigBuilder, FheBool};
 use serde_json::Value;
 
+
 fn main()  -> Result<(), Box<dyn std::error::Error>> {
-    const N:usize = 10;
 
     let config = ConfigBuilder::default().build();
 
@@ -86,18 +71,20 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut cnt = FheUint64::encrypt(0 as u64, &client_key);
-    for i in 0..N {
-        let val1 = FheUint64::encrypt(arrays["0.in1"][i], &client_key);
-        let val2 = FheUint64::encrypt(scalars["0.in2"], &client_key);
-        let bool_val:FheUint64 = val1.eq(&val2).cast_into();
-        cnt = cnt + bool_val;
-    }
-
     let mut outputs: HashMap<String, u64> = HashMap::new();
-    let str: String = String::from("0.out");
-    let y:u64 = cnt.decrypt(&client_key);
-    outputs.insert(str, y as u64);
+
+    let a = FheUint64::encrypt(scalars["a"], &client_key);
+    let b = FheUint64::encrypt(scalars["b"], &client_key);
+    let c = FheUint64::encrypt(3 as u64, &client_key);
+
+    let a_add_b = a + b;
+    let a_mul_c = a * c;
+
+    let a_add_b_dec = a_add_b.decrypt(&client_key);
+    let a_mul_c_dec = a_mul_c.decrypt(&client_key);
+
+    outputs.insert(String::from("a_add_b"), a_add_b_dec);
+    outputs.insert(String::from("a_mul_c"), a_mul_c_dec);
 
     let output_file = "output.json";
 
@@ -106,7 +93,6 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
 '''
 
 with open('raw_circuit.rs', 'w') as fp:

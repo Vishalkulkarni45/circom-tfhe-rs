@@ -1,9 +1,7 @@
 pragma circom 2.0.0;
 
-
-
 template naive_search() {
-   var N = 1000;
+   var N = 10;
    signal input in1[N];
    signal input in2;
    signal output out;

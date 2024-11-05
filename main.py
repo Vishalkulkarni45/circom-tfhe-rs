@@ -6,9 +6,9 @@ import os
 import subprocess
 from pathlib import Path
 import re
-
 import time
-
+import shutil
+from collections import defaultdict
 
 class AGateType(Enum):
     ADD = 'AAdd'
@@ -22,13 +22,11 @@ class AGateType(Enum):
     NEQ = 'ANeq'
     SUB = 'ASub'
     BW_XOR = 'AXor'
-    POW = 'APow'
-    IDIV = 'AIntDiv'
     MOD = 'AMod'
     BW_SHL = 'AShiftL'
     BW_SHR = 'AShiftR'
-    BW_OR = 'ABoolOr'
-    BW_AND = 'ABoolAnd'
+    BW_OR = 'ABitOr'
+    BW_AND = 'ABitAnd'
     # ABitOr,
     # ABitAnd,
 
@@ -37,16 +35,14 @@ MAP_GATE_TYPE_TO_OPERATOR_STR = {
     AGateType.ADD: '+',
     AGateType.MUL: '*',
     AGateType.DIV: '/',
-    AGateType.LT: '<',
+    AGateType.LT: 'lt',
     AGateType.SUB: '-',
-    AGateType.EQ: '==',
-    AGateType.NEQ: '!=',
-    AGateType.GT: '>',
-    AGateType.GEQ: '>=',
-    AGateType.LEQ: '<=',
+    AGateType.EQ: 'eq',
+    AGateType.NEQ: 'ne',
+    AGateType.GT: 'gt',
+    AGateType.GEQ: 'ge',
+    AGateType.LEQ: 'le',
     AGateType.BW_XOR: "^",
-    AGateType.POW: "**",
-    AGateType.IDIV: "/",
     AGateType.MOD: "%",
     AGateType.BW_SHL: "<<",
     AGateType.BW_SHR: ">>",
@@ -54,70 +50,164 @@ MAP_GATE_TYPE_TO_OPERATOR_STR = {
     AGateType.BW_AND:"&"
 }
 
-
-
-PROJECT_ROOT = Path(__file__).parent
-CIRCOM_2_ARITHC_PROJECT_ROOT = PROJECT_ROOT / '..' / 'circom-2-arithc'
-MPSPDZ_PROJECT_ROOT = PROJECT_ROOT / '..' / 'MP-SPDZ'
-MPSPDZ_CIRCUIT_DIR = MPSPDZ_PROJECT_ROOT / 'Programs' / 'Source'
-ARITHC_TO_BRISTOL_SCRIPT = PROJECT_ROOT / "arithc_to_bristol.py"
-EXAMPLES_DIR = PROJECT_ROOT / 'examples'
-
-MPC_PROTOCOL = 'semi'
-
-
-def generate_mpspdz_circuit(
+def generate_tfhe_circuit(
     arith_circuit_path: Path,
     circuit_info_path: Path,
-    mpc_settings_path: Path,
-) -> Path:
-    '''
-    Generate the MP-SPDZ circuit code that can be run by MP-SPDZ.
+    TFHE_PROJECT_ROOT: Path,
+    circuit_name: str,
+):
+    
 
-    Steps:
-    1. Read the arithmetic circuit file to get the gates
-    2. Read the circuit info file to get the input/output wire mapping
-    3. Read the input config file to get which party inputs should be read from
-    4. Generate the MP-SPDZ from the inputs above. The code should:
-        4.1. Initialize a `wires` list with input wires filled in: if a wire is a constant, fill it in directly. if a wire is an input, fill in which party this input comes from
-        4.2. Translate the gates into corresponding operations in MP-SPDZ
-        4.3. Print the outputs
-    '''
-    # {
-    #   "input_name_to_wire_index": { "a": 1, "b": 0, "c": 2},
-    #   "constants": {"d": {"value": 50, "wire_index": 3}},
-    #   "output_name_to_wire_index": { "a_add_b": 4, "a_mul_c": 5 }
-    # }
+
+    default_code = """
+use serde::Deserialize;
+use std::fs::File;
+use std::io::Read;
+use std::collections::HashMap;
+use std::array::from_fn;
+
+use tfhe::prelude::*;
+use tfhe::{generate_keys, set_server_key, ConfigBuilder, FheUint64};
+
+#[derive(Deserialize, Debug)]
+struct Constants {
+    value: String,
+    wire_index: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct InputData {
+    input_name_to_wire_index: HashMap<String, u32>,
+    constants: HashMap<String, Constants>,
+    output_name_to_wire_index: HashMap<String, u32>,
+}
+
+fn main()  -> Result<(), Box<dyn std::error::Error>> {
+
+    let config = ConfigBuilder::default().build();
+
+    // Key generation
+    let (client_key, server_keys) = generate_keys(config);
+
+        let mut file = File::open("input_struct.json")?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+
+        let input_struct: InputStruct = serde_json::from_str(&contents)?;
+        let (inputs,ele_to_idx) = struct_to_vec(input_struct);
+        
+        let enc_input: Result<Vec<Vec<FheUint64>>, _> = inputs
+            .into_iter()
+            .map(|input| {
+                input
+                    .into_iter()
+                    .map(|ith_input| FheUint64::try_encrypt(ith_input, &client_key))
+                    .collect()
+            })
+            .collect();
+    
+    let enc_input = enc_input?; 
+    let mut wires:[Option<FheUint64>; N ] = from_fn(|_| None); 
+
+    let mut file = File::open("circuit_info.json")?;
+    let mut raw_data = String::new();
+    file.read_to_string(&mut raw_data)?;
+
+    // Deserialize the JSON data
+    let data: InputData = serde_json::from_str(&raw_data).unwrap();
+
+    // Populate wires based on input_name_to_wire_index
+    for (name, index) in data.input_name_to_wire_index.into_iter() {
+        // parse string: name
+        if name.contains("["){
+            let start_index = name.find('[').unwrap() + 1;
+            let end_index = name.find(']').unwrap();
+
+            let number_in_brackets = &name[start_index..end_index];
+            let number_usize = number_in_brackets.parse::<usize>().unwrap();
+            let index_usize = index as usize;
+            assert!(
+                wires[index_usize].is_none(),
+                "Wire[{}] is already filled",
+                index_usize
+            );
+            let data_member = &name[2..start_index-1];
+            let idx = ele_to_idx.get(data_member).unwrap();
+            wires[index_usize] = Some(enc_input[*idx][number_usize].clone());
+        }
+        else {
+            let data_member = &name[2..];
+            let idx = ele_to_idx.get(data_member).unwrap();
+            assert!(enc_input[*idx].len()==1);
+            let index_usize = index as usize;
+            assert!(
+                wires[index_usize].is_none(),
+                "Wire[{}] is already filled",
+                index_usize
+            );
+            wires[index_usize] = Some(enc_input[*idx][0].clone());
+        }
+    }    
+    set_server_key(server_keys);
+
+"""
+
+    output_code = """
+    let mut output_raw: HashMap<String, u64> = HashMap::new();
+    for (name, index) in data.output_name_to_wire_index.into_iter() {
+        let index_usize = index as usize;
+        let decrypted_result: u64 = wires[index_usize]
+            .as_ref()
+            .unwrap()
+            .decrypt(&client_key);
+        output_raw.insert(name, decrypted_result);
+    }
+    let file = File::create("output.json")?;
+    serde_json::to_writer(file, &output_raw)?;
+
+    Ok(())
+}
+"""
+    total_wires = 0
+
     with open(circuit_info_path, 'r') as f:
         raw = json.load(f)
 
     input_name_to_wire_index = {k: int(v) for k, v in raw['input_name_to_wire_index'].items()}
+
+    input_struct_ele = {}
+    struct_to_nes_vec = []
+    struct_ele_to_idx = []
+
+    no_of_inputs = len(input_name_to_wire_index)
+    nth_struct_ele = 0
+    for k, v in input_name_to_wire_index.items():
+        if ']' in k:
+            after_dot = k.split('.')[1]
+            result = after_dot.split('[')[0]
+            
+            if f'{result}:Vec<u64>,' not in input_struct_ele:
+                input_struct_ele[f'{result}:Vec<u64>,'] = 0
+                struct_to_nes_vec.append(f'input.{result}.clone(),')
+                struct_ele_to_idx.append(f'data_members_index.insert(String::from("{result}"),{nth_struct_ele});')
+                nth_struct_ele+=1
+        else:
+            input_struct_ele[f'{k[2:]}:u64,'] = 0
+            struct_to_nes_vec.append(f'[input.{k[2:]}.clone()].to_vec(),')
+            struct_ele_to_idx.append(f'data_members_index.insert(String::from("{k[2:]}"),{nth_struct_ele});')
+            nth_struct_ele+=1
+    
+
+    # To remove the last comma
+    tmp = struct_to_nes_vec.pop()
+    tmp = tmp[:-1]
+    struct_to_nes_vec.append(tmp)
+            
     constants: dict[str, dict[str, int]] = raw['constants']
     output_name_to_wire_index = {k: int(v) for k, v in raw['output_name_to_wire_index'].items()}
-    # [
-    #     {
-    #         "name": "alice",
-    #         "inputs": ["a"],
-    #         "outputs": ["a_add_b", "a_mul_c"]
-    #     },
-    #     {
-    #         "name": "bob",
-    #         "inputs": ["b"],
-    #         "outputs": ["a_add_b", "a_mul_c"]
-    #     }
-    # ]
-    with open(mpc_settings_path, 'r') as f:
-        mpc_settings = json.load(f)
 
-    # Read number of wires from the bristol circuit file
-    # A bristol circuit file looks like this:
-    # 2 5
-    # 3 1 1 1
-    # 2 1 1
-    #
-    # 2 1 1 0 3 AAdd
-    # 2 1 1 2 4 AMul
-    # """
+   # print(input_struct_ele)
+   # print(struct_to_nes_vec)
 
     # Each gate line looks like this: '2 1 1 0 3 AAdd'
     @dataclass(frozen=True)
@@ -130,6 +220,7 @@ def generate_mpspdz_circuit(
     with open(arith_circuit_path, 'r') as f:
         first_line = next(f)
         num_gates, num_wires = map(int, first_line.split())
+        total_wires = num_wires
         second_line = next(f)
         num_inputs = int(second_line.split()[0])
         third_line = next(f)
@@ -153,47 +244,19 @@ def generate_mpspdz_circuit(
             gate_type = AGateType(line[2+num_inputs+num_outputs])
             gates.append(Gate(num_inputs, num_outputs, gate_type, inputs_wires, output_wire))
     assert len(gates) == num_gates
-
-    # Make inputs to circuit (not wires!!) from the user config
+        # Make inputs to circuit (not wires!!) from the user config
     # Initialize a list `inputs` with `num_wires` with value=None
-    inputs_str_list = [None] * num_wires
+    inputs_str_list = [] 
     print_outputs_str_list = []
     # Fill in the constants
     for name, o in constants.items():
         value = int(o['value'])
         # descaled_value = value / (10 ** scale)
         wire_index = int(o['wire_index'])
-        # Sanity check
-        if inputs_str_list[wire_index] is not None:
-            raise ValueError(f"Wire index {wire_index} is already filled in: {inputs_str_list[wire_index]=}")
         # Should check if we should use cfix instead
-        inputs_str_list[wire_index] = f'cint({value})'
-    for party_index, party_settings in enumerate(mpc_settings):
-        # Fill in the inputs from the parties
-        for input_name in party_settings['inputs']:
-            wire_index = int(input_name_to_wire_index[input_name])
-            # Sanity check
-            if inputs_str_list[wire_index] is not None:
-                raise ValueError(f"Wire index {wire_index} is already filled in: {inputs_str_list[wire_index]=}")
-            # Should check if we should use sfix instead
-            inputs_str_list[wire_index] = f'sint.get_input_from({party_index})'
-        # Fill in the outputs
-        for output_name in party_settings['outputs']:
-            wire_index = int(output_name_to_wire_index[output_name])
-            print_outputs_str_list.append(
-                f"print_ln_to({party_index}, 'outputs[{len(print_outputs_str_list)}]: {output_name}=%s', wires[{wire_index}].reveal_to({party_index}))"
-            )
+        inputs_str_list.append(f"wires[{wire_index}] =  Some(FheUint64::try_encrypt({value} as u64, &client_key)?);")
 
-
-    # Replace all `None` with str `'None'`
-    inputs_str_list = [x if x is not None else 'None' for x in inputs_str_list]
-
-    #
-    # Generate the circuit code
-    #
-    inputs_str = '[' + ', '.join(inputs_str_list) + ']'
-
-    # Translate bristol gates to MP-SPDZ operations
+     # Translate bristol gates to MP-SPDZ operations
     # E.g.
     # '2 1 1 0 2 AAdd' in bristol
     #   is translated to
@@ -205,113 +268,73 @@ def generate_mpspdz_circuit(
             raise ValueError(f"Gate type {gate.gate_type} is not supported")
         else:
             operator_str = MAP_GATE_TYPE_TO_OPERATOR_STR[gate.gate_type]
-            gate_str = f'wires[{gate.output_wire}] = wires[{gate.inputs_wires[0]}] {operator_str} wires[{gate.inputs_wires[1]}]'
+            if operator_str in ('le', 'lt', 'gt', 'ge', 'eq','ne'):
+                gate_str = f'wires[{gate.output_wire}] = Some(wires[{gate.inputs_wires[0]}].as_ref().unwrap().{operator_str}(wires[{gate.inputs_wires[1]}].as_ref().unwrap()).cast_into());'
+#            elif operator_str in ('%', '^', '|', '&'):
+#                gate_str = f'wires[{gate.output_wire}] = Some((wires[{gate.inputs_wires[0]}].as_ref().unwrap() {operator_str} wires[{gate.inputs_wires[1]}].as_ref().unwrap()).cast_into());'
+            else:
+                gate_str = f'wires[{gate.output_wire}] = Some(wires[{gate.inputs_wires[0]}].as_ref().unwrap() {operator_str} wires[{gate.inputs_wires[1]}].as_ref().unwrap());'
         gates_str_list.append(gate_str)
+
     gates_str = '\n'.join(gates_str_list)
+    input_struct = '\n'.join(input_struct_ele)
+    struct_to_nes_vec = '\n'.join(struct_to_nes_vec)
+    ele_to_idx = '\n'.join(struct_ele_to_idx)
+    inputs_str_list = '\n'.join(inputs_str_list)
 
-    # For outputs, should print the actual output names, and
-    # lines are ordered by actual output wire index since it's guaranteed the order
-    # E.g.
-    # print_ln('outputs[0]: a_add_b=%s', outputs[0].reveal())
-    # print_ln('outputs[1]: a_mul_c=%s', outputs[1].reveal())
-    # print_outputs_str_list = [
-    #     f"print_ln('outputs[{i}]: {output_name}=%s', wires[{output_name_to_wire_index[output_name]}].reveal())"
-    #     for i, output_name in enumerate(output_name_to_wire_index.keys())
-    # ]
-    print_outputs_str = '\n'.join(print_outputs_str_list)
+    open_bracket = '{'
+    close_bracket = '}'
+    circuit_code = f"""
+const N:usize = {total_wires};\n
 
-    circuit_code = f"""wires = {inputs_str}
-{gates_str}
-# Print outputs
-{print_outputs_str}
+#[derive(Debug, Deserialize)]
+pub struct InputStruct {open_bracket}
+    {input_struct}
+{close_bracket}
+
+pub fn struct_to_vec(input:InputStruct) -> (Vec<Vec<u64>>,HashMap<String,usize>){open_bracket}
+let mut data_members_index = HashMap::new();
+
+{ele_to_idx}
+    (vec![{struct_to_nes_vec}],data_members_index)
+{close_bracket}
+
+{default_code}
+    {inputs_str_list}
+    {gates_str}
+
+{output_code}
 """
-    circuit_name = arith_circuit_path.stem
-    out_mpc_path = MPSPDZ_CIRCUIT_DIR / f"{circuit_name}.mpc"
-    with open(out_mpc_path, 'w') as f:
+    out_tfhe_path = TFHE_PROJECT_ROOT / 'src' / 'main.rs'
+    with open(out_tfhe_path, 'w') as f:
         f.write(circuit_code)
-    return out_mpc_path
 
-
-def generate_mpspdz_inputs_for_party(
-    party: int,
-    input_json_for_party_path: Path,
-    circuit_info_path: Path,
-    mpc_settings_path: Path,
-):
-    '''
-    Generate MP-SPDZ circuit inputs for a party.
-
-    For each party, we need to translate `party_{i}.inputs.json` to an input file for MP-SPDZ according to their inputs' wire order
-    - The input file format of MP-SPDZ is `input0 input1 input2 ... inputN`. Each value is separated with a space
-    - This order is determined by the position (index) of the inputs in the MP-SPDZ wires
-        - For example, the actual wires in the generated MP-SPDZ circuit might look like this:
-            `[cfix(123), sfix.get_input_from(0), sfix.get_input_from(1), cfix(456), sfix.get_input_from(0), ...]`
-            - For party `0`, its MP-SPDZ inputs file should contain two values: one is for the first `sfix.get_input_from(0)`
-                and the other is for the second `sfix.get_input_from(0)`.
-        - This order can be obtained by sorting the `input_name_to_wire_index` by the wire index
-    '''
-
-    # Read inputs value from user provided input files
-    with open(input_json_for_party_path) as f:
-        input_values_for_party_json = json.load(f)
-
-    with open(mpc_settings_path, 'r') as f:
-        mpc_settings = json.load(f)
-    inputs_from: dict[str, int] = {}
-    for party_index, party_settings in enumerate(mpc_settings):
-        for input_name in party_settings['inputs']:
-            inputs_from[input_name] = int(party_index)
-
-    with open(circuit_info_path, 'r') as f:
-        circuit_info = json.load(f)
-        input_name_to_wire_index = circuit_info['input_name_to_wire_index']
-
-    wire_to_name_sorted = sorted(input_name_to_wire_index.items(), key=lambda x: x[1])
-    wire_value_in_order_for_mpsdz = []
-    for wire_name, wire_index in wire_to_name_sorted:
-        wire_from_party = int(inputs_from[wire_name])
-        # For the current party, we only care about the inputs from itself
-        if wire_from_party == party:
-            wire_value = input_values_for_party_json[wire_name]
-            wire_value_in_order_for_mpsdz.append(wire_value)
-    # Write these ordered wire inputs for mp-spdz usage
-    input_file_for_party_mpspdz = MPSPDZ_PROJECT_ROOT / "Player-Data" / f"Input-P{party}-0"
-    with open(input_file_for_party_mpspdz, 'w') as f:
-        f.write(" ".join(map(str, wire_value_in_order_for_mpsdz)))
-    return input_file_for_party_mpspdz
-
-
-def run_mpspdz_circuit(mpspdz_circuit_path: Path, num_parties: int) -> dict[str, int]:
-    # Run the MP-SPDZ interpreter to interpret the arithmetic circuit
-    # mpspdz_circuit_path = 'tutorial.mpc'
-    assert mpspdz_circuit_path.exists(), f"The MP-SPDZ circuit file {mpspdz_circuit_path} does not exist."
-    assert mpspdz_circuit_path.suffix == '.mpc', f"The MP-SPDZ circuit file {mpspdz_circuit_path} should have the extension .mpc."
-    # Check mpspdz_circuit_path is under mpspdz_circuit_dir
-    assert mpspdz_circuit_path.parent.absolute() == MPSPDZ_CIRCUIT_DIR.absolute(), \
-        f"The MP-SPDZ circuit file {mpspdz_circuit_path} should be under {MPSPDZ_CIRCUIT_DIR}."
-    # circuit_name = 'tutorial'
-    circuit_name = mpspdz_circuit_path.stem
+def run_tfhe_circuit(
+    TFHE_PROJECT_ROOT: Path,
+) -> str:
     # Compile and run MP-SPDZ in the local machine
-    command = f'cd {MPSPDZ_PROJECT_ROOT} && PLAYERS={num_parties} Scripts/compile-run.py -E {MPC_PROTOCOL} {circuit_name} -M'
+    command = f'cd {TFHE_PROJECT_ROOT} && cargo build --release && cargo run --release'
 
-    result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except subprocess.CalledProcessError as e:
+        print("Error:", e.stderr)
 
     if result.returncode != 0:
-        raise ValueError(f"Failed to run MP-SPDZ interpreter. Error code: {result.returncode}\n{result.stderr}")
+        raise ValueError(f"Failed to run TFHE. Error code: {result.returncode}\n{result.stderr}")
 
+    output_dir = TFHE_PROJECT_ROOT / 'output.json'
+    with open(output_dir, 'r') as file:
+    # Load the contents of the file into a Python dictionary
+        data = json.load(file)
+    
+    return data
     # Use regular expressions to parse the output
     # E.g.
     # "outputs[0]: keras_tensor_3=16"
     # "outputs[1]: keras_tensor_4[0][0]=8.47524e+32"
     # ...
-    output_pattern = re.compile(r"outputs\[\d+\]: 0.(\w+(?:\[\d+\])*)=(.+)$")
-    outputs = {}
-    for line in result.stdout.splitlines():
-        match = output_pattern.search(line)
-        if match:
-            output_name, value = match.groups()
-            outputs[output_name] = float(value) if '.' in value else int(value)
-    return outputs
+    
 
 
 def main():
@@ -321,19 +344,68 @@ def main():
     args = parser.parse_args()
     circuit_name = args.circuit_name
 
+    # defining directory
+    PROJECT_ROOT = Path(__file__).parent
+    CIRCOM_2_ARITHC_PROJECT_ROOT = PROJECT_ROOT / '..' / 'circom-2-arithc'
+    TFHE_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}'
+    TFHE_CIRCUIT_DIR = TFHE_PROJECT_ROOT / 'src'
+    TFHE_RAW_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}_raw'
+    TFHE_RAW_CIRCUIT_DIR = TFHE_RAW_PROJECT_ROOT / 'src'
+    EXAMPLES_DIR = PROJECT_ROOT / 'examples'
     circuit_dir = EXAMPLES_DIR / circuit_name
-    circom_path = circuit_dir / "circuit.circom"
-    mpc_settings_path = circuit_dir / "mpc_settings.json"
-    with open(mpc_settings_path, 'r') as f:
-        mpc_settings = json.load(f)
-    num_parties = len(mpc_settings)
-    input_json_path_for_each_party = [circuit_dir / f"inputs_party_{i}.json" for i in range(num_parties)]
+    circom_path = circuit_dir / 'circuit.circom'
 
-    # ./outputs/{circuit_name}/...
-    output_dir = PROJECT_ROOT / Path("outputs") / circuit_name
-    output_dir.mkdir(parents=True, exist_ok=True)
-    # Step 1: run circom-2-arithc
-    code = os.system(f"cd {CIRCOM_2_ARITHC_PROJECT_ROOT} && ./target/release/circom-2-arithc --input {circom_path} --output {output_dir}")
+    # Step 0: generate Rust directory in the TFHE-RS repo; 2 repositories
+    directory_path = TFHE_PROJECT_ROOT
+
+    # Check if the directory exists
+    if os.path.exists(directory_path) and os.path.isdir(directory_path):
+    # Delete the directory and its contents
+        shutil.rmtree(directory_path)
+        print(f"Directory '{directory_path}' has been deleted.")
+
+    directory_path_raw = TFHE_RAW_PROJECT_ROOT
+    if os.path.exists(directory_path_raw) and os.path.isdir(directory_path_raw):
+    # Delete the directory and its contents
+        shutil.rmtree(directory_path_raw)
+        print(f"Directory '{directory_path_raw}' has been deleted.")
+    
+    project_name = circuit_name
+    try:
+        subprocess.run(["cargo", "new", project_name], check=True, cwd=PROJECT_ROOT / 'outputs')
+        print(f"Rust project '{project_name}' created successfully.")
+    except subprocess.CalledProcessError as e:
+        print(f"Error: {e.stderr}")
+        raise RuntimeError(f"Failed to create the Rust project '{project_name}'.") from None
+    
+    new_dependency = """
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"  # Optional, for JSON support
+tfhe = { version = "0.8.4", features = [ "boolean", "shortint", "integer", "aarch64-unix" ] }
+regex = "1"
+\n
+    """
+    with open(TFHE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
+        file.write(new_dependency)
+    
+    project_name_raw = f'{circuit_name}_raw'
+    try:
+        subprocess.run(["cargo", "new", project_name_raw], check=True, cwd=PROJECT_ROOT / 'outputs')
+        print(f"Rust project '{project_name_raw}' created successfully.")
+    except subprocess.CalledProcessError:
+        raise RuntimeError(f"Failed to create the Rust project '{project_name_raw}'.") from None
+    
+    new_dependency = """
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"  # Optional, for JSON support
+tfhe = { version = "0.8.4", features = [ "boolean", "shortint", "integer", "aarch64-unix" ] }
+regex = "1"\n
+    """
+    with open(TFHE_RAW_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
+        file.write(new_dependency)
+
+    # Step 1a: run circom-2-arithc
+    code = os.system(f"cd {CIRCOM_2_ARITHC_PROJECT_ROOT} && ./target/release/circom-2-arithc --input {circom_path} --output {TFHE_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to compile circom. Error code: {code}")
     
@@ -343,65 +415,125 @@ def main():
     if code != 0:
         raise ValueError(f"Failed to run {circuit_name}.py. Error code: {code}")
     
-    code = os.system(f"cd {circuit_dir} && cp ./raw_circuit.mpc {MPSPDZ_CIRCUIT_DIR}")
-    if code != 0:
-        raise ValueError(f"Failed to copy raw_circuit.mpc. Error code: {code}")
+    # step 1c: make a modified input
+    # Assume `data` is a dictionary parsed from JSON
+    with open(circuit_dir / 'input.json', 'r') as f:
+        data = json.load(f)
 
+    # Regular expression to capture keys like "in_add[0]"
+    key_regex = re.compile(r"^(?P<base>\d+\.[a-zA-Z0-9_]+)\[(?P<index>\d+)\]$")
+    array_regex = re.compile(r"\[\d+\]")
+
+    # Separate parsed data into a nested dictionary for arrays and single values for scalars
+    arrays = defaultdict(lambda: [])
+    scalars = {}
+    N = 10  # Define the size of the array, adjust as needed
+
+    for key, value in data.items():
+        # Check if value can be treated as an integer
+        if isinstance(value, int):
+            if array_regex.search(key):
+                match = key_regex.match(key)
+                if match:
+                    # If key is an array type, get the name and index
+                    name = match.group("base")
+                    index = int(match.group("index"))
+                    name = name.split('.')[1]
+
+                    # Ensure the vector is long enough
+                    while len(arrays[name]) <= index:
+                        arrays[name].append(0)
+
+                    # Assign the integer value to the correct index
+                    arrays[name][index] = int(value)
+            else:
+                # If key is not an array, store it as a scalar
+                key = key.split('.')[1]
+                scalars[key] = int(value)
+
+
+    json_string = "{\n"
+    for key, value in arrays.items():
+        # Check if the value is a list
+        if isinstance(value, list):
+            value_str = "[" + ", ".join(f'{item}' for item in value) + "]"
+        else:
+            value_str = f'{value}'
+        json_string += f'    "{key}": {value_str},\n'
+
+    for key, value in scalars.items():
+        # Check if the value is a list
+        if isinstance(value, list):
+            value_str =  ", ".join(f'{item}' for item in value) 
+        else:
+            value_str = f'{value}'
+        json_string += f'    "{key}": {value_str},\n'
+    # Remove the last comma and add closing bracket
+    json_string = json_string.rstrip(",\n") + "\n}"
+
+    # Write the JSON string to a file
+    with open(circuit_dir / 'input_struct.json', "w") as json_file:
+        json_file.write(json_string)
+
+    # Step 1d: copy raw circuit into output folder
+    os.chdir(circuit_dir)
+    os.rename('raw_circuit.rs', 'main.rs')
+
+    source_file = circuit_dir / 'main.rs'
+    destination_file = TFHE_RAW_CIRCUIT_DIR / 'main.rs'
+    shutil.copy(source_file, destination_file)
     
-    # Step 2: run arithc-to-bristol
-    # python arithc_to_bristol.py {arithc_path} {output_dir}
-    arithc_path = output_dir / "circuit.json"
-    ### NOW NOT NEEDED
-    # code = os.system(f"python {ARITHC_TO_BRISTOL_SCRIPT} {arithc_path} {output_dir}")
-    # if code != 0:
-    #     raise ValueError(f"Failed to run arithc-to-bristol. Error code: {code}")
-    ### NOW NOT NEEDED
+    # Step 1d: copy input.json into raw_circuit directory and circuit directory
+    code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_RAW_PROJECT_ROOT} && cp ./input_struct.json {TFHE_RAW_PROJECT_ROOT}")
+    if code != 0:
+        raise ValueError(f"Failed to copy input.json to RAW_CIRCUIT_DIR. Error code: {code}")
+    
+    code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_PROJECT_ROOT} && cp ./input_struct.json {TFHE_PROJECT_ROOT}")
+    if code != 0:
+        raise ValueError(f"Failed to copy input.json to CIRCUIT_DIR. Error code: {code}")
+    
+    # Step 2: run arithc-to-bristol (NO NEEDED)
 
-    bristol_path = output_dir / "circuit.txt"
-    circuit_info_path = output_dir / "circuit_info.json"
-    # Step 3: generate MP-SPDZ circuit
-    mpspdz_circuit_path = generate_mpspdz_circuit(
+    bristol_path = TFHE_PROJECT_ROOT / "circuit.txt"
+    circuit_info_path = TFHE_PROJECT_ROOT / "circuit_info.json"
+
+    # Step 3: generate TFHE circuit
+    generate_tfhe_circuit(
         bristol_path,
         circuit_info_path,
-        mpc_settings_path,
+        TFHE_PROJECT_ROOT,
+        circuit_name,
     )
-    print(f"Generated MP-SPDZ circuit at {mpspdz_circuit_path}")
-
-    code = os.system(f"cd {MPSPDZ_CIRCUIT_DIR} && cp ./circuit.mpc {output_dir}")
-    if code != 0:
-        raise ValueError(f"Failed to generate circuit.mpc. Error code: {code}")
+    print(f"Generated TFHE circuit at {TFHE_CIRCUIT_DIR}")
     
-    # Step 4: generate MP-SPDZ inputs for each party
-    for i, input_json_for_party_path in enumerate(input_json_path_for_each_party):
-        input_file_for_party_mpspdz = generate_mpspdz_inputs_for_party(
-            i,
-            input_json_for_party_path,
-            circuit_info_path,
-            mpc_settings_path,
-        )
-        print(f"Generated MP-SPDZ inputs for party {i} at {input_file_for_party_mpspdz}")
-
+    # Step 4-a: run converted TFHE circuit
     st = time.time()
-    # Step 5: run MP-SPDZ circuit
-    outputs = run_mpspdz_circuit(mpspdz_circuit_path, num_parties)
+    outputs = run_tfhe_circuit(TFHE_PROJECT_ROOT)
     print(f"\n\n\n========= Computation has finished =========\n\n")
     print(f"Outputs: {outputs}")
     et = time.time()
     elapsed_time = et - st
     print('\n\n\nCIRCOM Execution time:', elapsed_time, 'seconds')
-    with open(f"./outputs/{circuit_name}/benchmark.json", 'w') as fp:
+
+    benchmark_dir = TFHE_PROJECT_ROOT / 'benchmark.json'
+    with open(benchmark_dir, 'w') as fp:
         json.dump({"computation_time" : elapsed_time}, fp)
 
-    rawpath = Path(str(mpspdz_circuit_path).replace("circuit", "raw_circuit"));
-    print(f"\n\n\nBENCH RAW MP-SPDZ circuit at {rawpath}")
+    # Step 4-b: run original TFHE circuit
+    print(f"\n\n\nBENCH RAW MP-SPDZ circuit at {TFHE_RAW_CIRCUIT_DIR}")
 
     st = time.time()
-    raw_outputs = run_mpspdz_circuit(rawpath, num_parties)
+    raw_outputs = run_tfhe_circuit(TFHE_RAW_PROJECT_ROOT)
     print(f"\n\n\n========= Raw Computation has finished =========\n\n")
     print(f"Outputs: {raw_outputs}")
     et = time.time()
     elapsed_time = et - st
     print('\n\n\nRAW Execution time:', elapsed_time, 'seconds')
+
+    if outputs == raw_outputs:
+        print("Output matches. Succeed.")
+    else:
+        print("Output doesn't match. Failed.")
 
 
 if __name__ == '__main__':
