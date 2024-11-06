@@ -1,27 +1,24 @@
 import random
 
-in1txt = "0.in1";
-in2txt = "0.in2";
-outtxt = "0.out";
+in1txt = "0.in1"
+in2txt = "0.in2"
+outtxt = "0.out"
 
-N = 10;
-cnt = 0;
-in2_val = random.randint(1, 10);
+N = 10
+in2_val = random.randint(1, 10)
 
-inputs = {};
+inputs = {}
 for i in range(N):
-    in1str = in1txt + "["+ str(i) + "]";
-    inputs[in1str] = random.randint(1, 10);
-    if inputs[in1str] == in2_val:
-        cnt += 1
+    in1str = in1txt + "["+ str(i) + "]"
+    inputs[in1str] = random.randint(1, 10)
 
 inputs["0.in2"] = in2_val
-#inputs["out"] = cnt
+
 
 import json
 
 with open('input.json', 'w') as fp:
-    json.dump(inputs, fp);
+    json.dump(inputs, fp)
 
 raw_code = '''
 
