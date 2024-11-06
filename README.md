@@ -1,6 +1,6 @@
 # Circom-tfhe-rs
 
-Circom-tfhe-rs allows user to perform TFHE arithmetizations by writing CIrcom code using the zama's tfhe-rs framework. Circom code is compiled into an arithmetic circuit and then translated gate by gate to the corresponding tfhe-rs operators.
+Circom-tfhe-rs allows user to perform TFHE arithmetizations by writing Circom code using the zama's tfhe-rs framework. Circom code is compiled into an arithmetic circuit using circom-2-arithc and then translated gate by gate to the corresponding tfhe-rs operators.
 
 **NOTE:** Now circom-2-arithc also conveniently outputs the Bristol format with corresponding circuit_info (hence the json_arbistol is not necessary anymore).
 
@@ -16,17 +16,17 @@ Circom-tfhe-rs allows user to perform TFHE arithmetizations by writing CIrcom co
 |                      | `>`      Greater Than          |     ✅     |
 |                      | `>=`     Greater Than or Equal |     ✅     |
 |                      | `<`      Less Than             |     ✅     |
-|                      | `<=`     Less Than or Equal    |     ✅     |
+|                      | `<=`     Less Than or Equal    |     ✅     | 
 |                      | `*`   Multiplication           |     ✅     |
 |                      | `!=` Not Equal                 |     ✅     |
 |                      | `-`  Subtraction               |     ✅     |
 |                      | `**` Exponentiation            |     ❌     |
 |                      | `<<` Shift Left                |     ✅     |
 |                      | `>>` Shift Right               |     ✅     |
-|                      | `^`  Bitwise XOR               |     ❌     |
-|                      | `\|` Bitwise OR                |     ❌     |
-|                      | `&`  Bitwise AND               |     ❌     |
-|                      | `%`  Modulo                    |     ❌     |
+|                      | `^`  Bitwise XOR               |     ✅     |
+|                      | `\|` Bitwise OR                |     ✅     |
+|                      | `&`  Bitwise AND               |     ✅     |
+|                      | `%`  Modulo                    |     ✅     |
 
 
 
@@ -78,19 +78,19 @@ cargo build --release
 
 We have two examples available:
 
-- [ops_tests](./examples/ops_tests/) - a benchmark of supported ops for sint
+- [ops_tests](./examples/ops_tests/) - a benchmark of supported operations
 - [naive_search](./examples/naive_search/) - a benchmark of naive search
 
 In both examples, you will find the following files in each example directory:
 
 - `circuit.circom` - the circom code representing the circuit
-- `{circuit_name}.py` - automated generator for input files and model tfhe-rs program
+- `{circuit_name}.py` - automated generator for input files and `raw_circuit` tfhe-rs program
 
 You can run these examples by following the instructions in the root directory.
 
 ```bash
 # Go back to the root directory of circom-tfhe-rs
-cd ..
+cd ../circom-tfhe-rs
 mkdir outputs
 python main.py {circuit_name}
 ```
@@ -110,9 +110,9 @@ python main.py {circuit_name}
 2. Add the necessary dependencies in `Cargo.toml` in each Rust directory.
 3. For existing circom circuit, run circom-2-arithc.
 4. Run python script in `examples/{circuit_name}/`
-   - It generates model tfhe-rs code, `input.json`
+   - It generates `raw_circuit` tfhe-rs code, `input.json`
    - After generating `input.json`, make a new file `input_struct.json` which has different format.
-   - After generating model tfhe-rs code, copy it into `outputs/{circuit_name}_raw`
+   - After generating `raw_circuit` tfhe-rs code, copy it into `outputs/{circuit_name}_raw`
    - Copy `input.json` and `input_struct.json` in `outputs/{circuit_name}` and `outputs/{circuit_name}_raw`
 5. Using bristol fashion circuit, generate tfhe-rs code.
 6. Run converted tfhe-rs code, and compare it with model tfhe-rs code.
