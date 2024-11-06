@@ -1,26 +1,26 @@
 import random
 
-in1txt = "0.in1";
-in2txt = "0.in2";
-outtxt = "0.out";
+in1txt = "0.in1"
+in2txt = "0.in2"
+outtxt = "0.out"
 # ops = ["add", "div", "eq", "gt", "geq", "lt", "leq", "mul", "neq", "sub", "xor", "pow", "idiv", "mod", "shl", "shr"];
-ops = ["add", "div", "eq", "gt", "geq", "lt", "leq", "mul", "neq", "sub", "xor", "shl", "shr", "mod", "or", "and"];
+ops = ["add", "div", "eq", "gt", "geq", "lt", "leq", "mul", "neq", "sub", "xor", "shl", "shr", "mod", "or", "and"]
 
-N = 5;
+N = 5
 
-inputs = {};
+inputs = {}
 for i in range(N):
   for op in ops:
-    in1ops = in1txt + "_" + op + "["+ str(i) + "]";
-    in2ops = in2txt + "_" + op + "["+ str(i) + "]";
-    outops = outtxt + "_" + op + "["+ str(i) + "]";
+    in1ops = in1txt + "_" + op + "["+ str(i) + "]"
+    in2ops = in2txt + "_" + op + "["+ str(i) + "]"
+    outops = outtxt + "_" + op + "["+ str(i) + "]"
     inputs[in1ops] = random.randint(1, 1024);
     inputs[in2ops] = random.randint(1, 1024);
 
 import json
 
 with open('input.json', 'w') as fp:
-    json.dump(inputs, fp);
+    json.dump(inputs, fp)
 
 raw_code = '''
 use std::collections::HashMap;
