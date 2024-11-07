@@ -1,4 +1,5 @@
 import random
+import argparse
 
 in1txt = "0.in1"
 in2txt = "0.in2"
@@ -8,14 +9,34 @@ ops = ["add", "div", "eq", "gt", "geq", "lt", "leq", "mul", "neq", "sub", "xor",
 
 N = 5
 
+parser = argparse.ArgumentParser(description="ops script")
+parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u64,i64...")
+
+args = parser.parse_args()
+plain_text_data_type = args.plain_text_data_type
+
+integer_type = plain_text_data_type[0]
+integer_range = plain_text_data_type[1:]
+
+upper_range = 0
+lower_range = 0
+
+if integer_type == 'u':
+    upper_range = 2 ** {int(integer_range)}
+else:
+    lower_range = - 2 ** {int(integer_range) - 1}
+    upper_range = 2 ** {int(integer_range) - 1} - 1
+
+
 inputs = {}
 for i in range(N):
-  for op in ops:
-    in1ops = in1txt + "_" + op + "["+ str(i) + "]"
-    in2ops = in2txt + "_" + op + "["+ str(i) + "]"
-    outops = outtxt + "_" + op + "["+ str(i) + "]"
-    inputs[in1ops] = random.randint(1, 1024);
-    inputs[in2ops] = random.randint(1, 1024);
+    for op in ops:
+        in1ops = in1txt + "_" + op + "["+ str(i) + "]"
+        in2ops = in2txt + "_" + op + "["+ str(i) + "]"
+        outops = outtxt + "_" + op + "["+ str(i) + "]"
+        
+        inputs[in1ops] = random.randint(lower_range, upper_range)
+        inputs[in2ops] = random.randint(lower_range, upper_range)
 
 import json
 
