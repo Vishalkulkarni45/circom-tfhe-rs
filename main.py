@@ -54,10 +54,14 @@ def generate_tfhe_circuit(
     arith_circuit_path: Path,
     circuit_info_path: Path,
     tfhe_project_root: Path,
+    plain_text_data_type: str,
+    cipher_text_data_type: str
 ):
 
-#ncludes default code, such as setting keys, assigning inputs to the wire, etc.
-    default_code = """
+    open_bracket = '{'
+    close_bracket = '}'
+#Includes default code, such as setting keys, assigning inputs to the wire, etc.
+    default_code = f"""
 use serde::Deserialize;
 use std::fs::File;
 use std::io::Read;
@@ -65,22 +69,22 @@ use std::collections::HashMap;
 use std::array::from_fn;
 
 use tfhe::prelude::*;
-use tfhe::{generate_keys, set_server_key, ConfigBuilder, FheUint64};
+use tfhe::{open_bracket}generate_keys, set_server_key, ConfigBuilder, {cipher_text_data_type}{close_bracket};
 
 #[derive(Deserialize, Debug)]
-struct Constants {
+struct Constants {open_bracket}
     value: String,
-    wire_index: u64,
-}
+    wire_index: {plain_text_data_type},
+{close_bracket}
 
 #[derive(Debug, Deserialize)]
-struct InputData {
+struct InputData {open_bracket}
     input_name_to_wire_index: HashMap<String, u32>,
     constants: HashMap<String, Constants>,
     output_name_to_wire_index: HashMap<String, u32>,
-}
+{close_bracket}
 
-fn main()  -> Result<(), Box<dyn std::error::Error>> {
+fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
 
     let config = ConfigBuilder::default().build();
 
@@ -94,18 +98,18 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
         let input_struct: InputStruct = serde_json::from_str(&contents)?;
         let (inputs,ele_to_idx) = struct_to_vec(input_struct);
         
-        let enc_input: Result<Vec<Vec<FheUint64>>, _> = inputs
+        let enc_input: Result<Vec<Vec<{cipher_text_data_type}>>, _> = inputs
             .into_iter()
-            .map(|input| {
+            .map(|input| {open_bracket}
                 input
                     .into_iter()
-                    .map(|ith_input| FheUint64::try_encrypt(ith_input, &client_key))
+                    .map(|ith_input| {cipher_text_data_type}::try_encrypt(ith_input, &client_key))
                     .collect()
-            })
+            {close_bracket})
             .collect();
     
     let enc_input = enc_input?; 
-    let mut wires:[Option<FheUint64>; N ] = from_fn(|_| None); 
+    let mut wires:[Option<{cipher_text_data_type}>; N ] = from_fn(|_| None); 
 
     let mut file = File::open("circuit_info.json")?;
     let mut raw_data = String::new();
@@ -115,9 +119,9 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
     let data: InputData = serde_json::from_str(&raw_data).unwrap();
 
     // Populate wires based on input_name_to_wire_index
-    for (name, index) in data.input_name_to_wire_index.into_iter() {
+    for (name, index) in data.input_name_to_wire_index.into_iter() {open_bracket}
         // parse string: name
-        if name.contains("["){
+        if name.contains("["){open_bracket}
             let start_index = name.find('[').unwrap() + 1;
             let end_index = name.find(']').unwrap();
 
@@ -126,36 +130,36 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
             let index_usize = index as usize;
             assert!(
                 wires[index_usize].is_none(),
-                "Wire[{}] is already filled",
+                "Wire[{open_bracket}{close_bracket}] is already filled",
                 index_usize
             );
             let data_member = &name[2..start_index-1];
             let idx = ele_to_idx.get(data_member).unwrap();
             wires[index_usize] = Some(enc_input[*idx][number_usize].clone());
-        }
-        else {
+        {close_bracket}
+        else {open_bracket}
             let data_member = &name[2..];
             let idx = ele_to_idx.get(data_member).unwrap();
             assert!(enc_input[*idx].len()==1);
             let index_usize = index as usize;
             assert!(
                 wires[index_usize].is_none(),
-                "Wire[{}] is already filled",
+                "Wire[{open_bracket}{close_bracket}] is already filled",
                 index_usize
             );
             wires[index_usize] = Some(enc_input[*idx][0].clone());
-        }
-    }    
+        {close_bracket}
+    {close_bracket}    
     set_server_key(server_keys);
 
 """
 
 #  Decrypt the output wire and save it to output.json
     output_code = """
-    let mut output_raw: HashMap<String, u64> = HashMap::new();
+    let mut output_raw: HashMap<String, {plain_text_data_type}> = HashMap::new();
     for (name, index) in data.output_name_to_wire_index.into_iter() {
         let index_usize = index as usize;
-        let decrypted_result: u64 = wires[index_usize]
+        let decrypted_result: {plain_text_data_type} = wires[index_usize]
             .as_ref()
             .unwrap()
             .decrypt(&client_key);
@@ -187,13 +191,13 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
             after_dot = k.split('.')[1]
             result = after_dot.split('[')[0]
 
-            if f'{result}:Vec<u64>,' not in input_struct_ele:
-                input_struct_ele[f'{result}:Vec<u64>,'] = 0
+            if f'{result}:Vec<{plain_text_data_type}>,' not in input_struct_ele:
+                input_struct_ele[f'{result}:Vec<{plain_text_data_type}>,'] = 0
                 struct_to_nes_vec.append(f'input.{result}.clone(),')
                 struct_ele_to_idx.append(f'data_members_index.insert(String::from("{result}"),{nth_struct_ele});')
                 nth_struct_ele+=1
         else:
-            input_struct_ele[f'{k[2:]}:u64,'] = 0
+            input_struct_ele[f'{k[2:]}:{plain_text_data_type},'] = 0
             struct_to_nes_vec.append(f'[input.{k[2:]}.clone()].to_vec(),')
             struct_ele_to_idx.append(f'data_members_index.insert(String::from("{k[2:]}"),{nth_struct_ele});')
             nth_struct_ele+=1
@@ -250,7 +254,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
         # descaled_value = value / (10 ** scale)
         wire_index = int(o['wire_index'])
         # Should check if we should use cfix instead
-        inputs_str_list.append(f"wires[{wire_index}] =  Some(FheUint64::try_encrypt({value} as u64, &client_key)?);")
+        inputs_str_list.append(f"wires[{wire_index}] =  Some({cipher_text_data_type}::try_encrypt({value} as {plain_text_data_type}, &client_key)?);")
 
     # Translate bristol gates to tfhe operations
     # E.g.
@@ -288,7 +292,7 @@ pub struct InputStruct {open_bracket}
     {input_struct}
 {close_bracket}
 
-pub fn struct_to_vec(input:InputStruct) -> (Vec<Vec<u64>>,HashMap<String,usize>){open_bracket}
+pub fn struct_to_vec(input:InputStruct) -> (Vec<Vec<{plain_text_data_type}>>,HashMap<String,usize>){open_bracket}
 let mut data_members_index = HashMap::new();
 
 {ele_to_idx}
@@ -330,9 +334,13 @@ def run_tfhe_circuit(
 def main():
     parser = argparse.ArgumentParser(description="Compile circom to JSON and Bristol and circuit info files.")
     parser.add_argument("circuit_name", type=str, help="The name of the circuit (used for input/output file naming)")
+    parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u64,i64...")
+    parser.add_argument("cipher_text_data_type", type=str, help="Cipher text data type like FheUint64,FheInt64...")
 
     args = parser.parse_args()
     circuit_name = args.circuit_name
+    plain_text_data_type = args.plain_text_data_type
+    cipher_text_data_type = args.cipher_text_data_type
 
     # defining directory
     PROJECT_ROOT = Path(__file__).parent
@@ -401,7 +409,7 @@ regex = "1"\n
     
     # Step 1b: run circuit script
     # python {circuit}.py
-    code = os.system(f"cd {circuit_dir} && python3 {circuit_name}.py")
+    code = os.system(f"cd {circuit_dir} && python3 {circuit_name}.py {plain_text_data_type}")
     if code != 0:
         raise ValueError(f"Failed to run {circuit_name}.py. Error code: {code}")
     
@@ -490,6 +498,8 @@ regex = "1"\n
         bristol_path,
         circuit_info_path,
         TFHE_PROJECT_ROOT,
+        plain_text_data_type,
+        cipher_text_data_type
     )
     print(f"Generated TFHE circuit at {TFHE_CIRCUIT_DIR}")
 
