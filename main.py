@@ -53,12 +53,10 @@ MAP_GATE_TYPE_TO_OPERATOR_STR = {
 def generate_tfhe_circuit(
     arith_circuit_path: Path,
     circuit_info_path: Path,
-    TFHE_PROJECT_ROOT: Path,
-    circuit_name: str,
+    tfhe_project_root: Path,
 ):
-    
 
-
+#ncludes default code, such as setting keys, assigning inputs to the wire, etc.
     default_code = """
 use serde::Deserialize;
 use std::fs::File;
@@ -152,6 +150,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
 
 """
 
+#  Decrypt the output wire and save it to output.json
     output_code = """
     let mut output_raw: HashMap<String, u64> = HashMap::new();
     for (name, index) in data.output_name_to_wire_index.into_iter() {
@@ -179,13 +178,15 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
     struct_to_nes_vec = []
     struct_ele_to_idx = []
 
-    no_of_inputs = len(input_name_to_wire_index)
+
     nth_struct_ele = 0
+    # Generates the Input struct along with its helper function `struct_to_vec`
+    # `struct_to_vec` converts struct to nested vector
     for k, v in input_name_to_wire_index.items():
         if ']' in k:
             after_dot = k.split('.')[1]
             result = after_dot.split('[')[0]
-            
+
             if f'{result}:Vec<u64>,' not in input_struct_ele:
                 input_struct_ele[f'{result}:Vec<u64>,'] = 0
                 struct_to_nes_vec.append(f'input.{result}.clone(),')
@@ -196,18 +197,14 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
             struct_to_nes_vec.append(f'[input.{k[2:]}.clone()].to_vec(),')
             struct_ele_to_idx.append(f'data_members_index.insert(String::from("{k[2:]}"),{nth_struct_ele});')
             nth_struct_ele+=1
-    
+
 
     # To remove the last comma
     tmp = struct_to_nes_vec.pop()
     tmp = tmp[:-1]
     struct_to_nes_vec.append(tmp)
-            
     constants: dict[str, dict[str, int]] = raw['constants']
-    output_name_to_wire_index = {k: int(v) for k, v in raw['output_name_to_wire_index'].items()}
 
-   # print(input_struct_ele)
-   # print(struct_to_nes_vec)
 
     # Each gate line looks like this: '2 1 1 0 3 AAdd'
     @dataclass(frozen=True)
@@ -244,23 +241,22 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
             gate_type = AGateType(line[2+num_inputs+num_outputs])
             gates.append(Gate(num_inputs, num_outputs, gate_type, inputs_wires, output_wire))
     assert len(gates) == num_gates
-        # Make inputs to circuit (not wires!!) from the user config
+    # Make inputs to circuit (not wires!!) from the user config
     # Initialize a list `inputs` with `num_wires` with value=None
-    inputs_str_list = [] 
-    print_outputs_str_list = []
+    inputs_str_list = []
     # Fill in the constants
-    for name, o in constants.items():
+    for _, o in constants.items():
         value = int(o['value'])
         # descaled_value = value / (10 ** scale)
         wire_index = int(o['wire_index'])
         # Should check if we should use cfix instead
         inputs_str_list.append(f"wires[{wire_index}] =  Some(FheUint64::try_encrypt({value} as u64, &client_key)?);")
 
-     # Translate bristol gates to MP-SPDZ operations
+    # Translate bristol gates to tfhe operations
     # E.g.
     # '2 1 1 0 2 AAdd' in bristol
     #   is translated to
-    # 'wires[2] = wires[1] + wires[0]' in MP-SPDZ
+    # 'wires[2] = wires[1] + wires[0]' in tfhe
     gates_str_list = []
     for gate in gates:
         gate_str = ''
@@ -270,8 +266,6 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
             operator_str = MAP_GATE_TYPE_TO_OPERATOR_STR[gate.gate_type]
             if operator_str in ('le', 'lt', 'gt', 'ge', 'eq','ne'):
                 gate_str = f'wires[{gate.output_wire}] = Some(wires[{gate.inputs_wires[0]}].as_ref().unwrap().{operator_str}(wires[{gate.inputs_wires[1]}].as_ref().unwrap()).cast_into());'
-#            elif operator_str in ('%', '^', '|', '&'):
-#                gate_str = f'wires[{gate.output_wire}] = Some((wires[{gate.inputs_wires[0]}].as_ref().unwrap() {operator_str} wires[{gate.inputs_wires[1]}].as_ref().unwrap()).cast_into());'
             else:
                 gate_str = f'wires[{gate.output_wire}] = Some(wires[{gate.inputs_wires[0]}].as_ref().unwrap() {operator_str} wires[{gate.inputs_wires[1]}].as_ref().unwrap());'
         gates_str_list.append(gate_str)
@@ -284,6 +278,8 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
 
     open_bracket = '{'
     close_bracket = '}'
+
+#Combines all the functions to create tfhe-rs file
     circuit_code = f"""
 const N:usize = {total_wires};\n
 
@@ -305,15 +301,15 @@ let mut data_members_index = HashMap::new();
 
 {output_code}
 """
-    out_tfhe_path = TFHE_PROJECT_ROOT / 'src' / 'main.rs'
+    out_tfhe_path = tfhe_project_root / 'src' / 'main.rs'
     with open(out_tfhe_path, 'w') as f:
         f.write(circuit_code)
 
 def run_tfhe_circuit(
-    TFHE_PROJECT_ROOT: Path,
+    tfhe_project_root: Path,
 ) -> str:
-    # Compile and run MP-SPDZ in the local machine
-    command = f'cd {TFHE_PROJECT_ROOT} && cargo build --release && cargo run --release'
+    # Compile and run tfhe in the local machine
+    command = f'cd {tfhe_project_root} && cargo build --release && cargo fmt --all && cargo run --release'
 
     try:
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -323,18 +319,12 @@ def run_tfhe_circuit(
     if result.returncode != 0:
         raise ValueError(f"Failed to run TFHE. Error code: {result.returncode}\n{result.stderr}")
 
-    output_dir = TFHE_PROJECT_ROOT / 'output.json'
+    output_dir = tfhe_project_root / 'output.json'
     with open(output_dir, 'r') as file:
     # Load the contents of the file into a Python dictionary
         data = json.load(file)
-    
+
     return data
-    # Use regular expressions to parse the output
-    # E.g.
-    # "outputs[0]: keras_tensor_3=16"
-    # "outputs[1]: keras_tensor_4[0][0]=8.47524e+32"
-    # ...
-    
 
 
 def main():
@@ -369,7 +359,7 @@ def main():
     # Delete the directory and its contents
         shutil.rmtree(directory_path_raw)
         print(f"Directory '{directory_path_raw}' has been deleted.")
-    
+
     project_name = circuit_name
     try:
         subprocess.run(["cargo", "new", project_name], check=True, cwd=PROJECT_ROOT / 'outputs')
@@ -377,7 +367,7 @@ def main():
     except subprocess.CalledProcessError as e:
         print(f"Error: {e.stderr}")
         raise RuntimeError(f"Failed to create the Rust project '{project_name}'.") from None
-    
+
     new_dependency = """
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"  # Optional, for JSON support
@@ -387,14 +377,14 @@ regex = "1"
     """
     with open(TFHE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
         file.write(new_dependency)
-    
+
     project_name_raw = f'{circuit_name}_raw'
     try:
         subprocess.run(["cargo", "new", project_name_raw], check=True, cwd=PROJECT_ROOT / 'outputs')
         print(f"Rust project '{project_name_raw}' created successfully.")
     except subprocess.CalledProcessError:
         raise RuntimeError(f"Failed to create the Rust project '{project_name_raw}'.") from None
-    
+
     new_dependency = """
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"  # Optional, for JSON support
@@ -420,14 +410,12 @@ regex = "1"\n
     with open(circuit_dir / 'input.json', 'r') as f:
         data = json.load(f)
 
-    # Regular expression to capture keys like "in_add[0]"
     key_regex = re.compile(r"^(?P<base>\d+\.[a-zA-Z0-9_]+)\[(?P<index>\d+)\]$")
     array_regex = re.compile(r"\[\d+\]")
 
     # Separate parsed data into a nested dictionary for arrays and single values for scalars
     arrays = defaultdict(lambda: [])
     scalars = {}
-    N = 10  # Define the size of the array, adjust as needed
 
     for key, value in data.items():
         # Check if value can be treated as an integer
@@ -452,6 +440,7 @@ regex = "1"\n
                 scalars[key] = int(value)
 
 
+# Converts the input.json to input_struct.json which can be seralised  to `input_struct` by the rust
     json_string = "{\n"
     for key, value in arrays.items():
         # Check if the value is a list
@@ -464,7 +453,7 @@ regex = "1"\n
     for key, value in scalars.items():
         # Check if the value is a list
         if isinstance(value, list):
-            value_str =  ", ".join(f'{item}' for item in value) 
+            value_str =  ", ".join(f'{item}' for item in value)
         else:
             value_str = f'{value}'
         json_string += f'    "{key}": {value_str},\n'
@@ -482,16 +471,15 @@ regex = "1"\n
     source_file = circuit_dir / 'main.rs'
     destination_file = TFHE_RAW_CIRCUIT_DIR / 'main.rs'
     shutil.copy(source_file, destination_file)
-    
+
     # Step 1d: copy input.json into raw_circuit directory and circuit directory
     code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_RAW_PROJECT_ROOT} && cp ./input_struct.json {TFHE_RAW_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to copy input.json to RAW_CIRCUIT_DIR. Error code: {code}")
-    
     code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_PROJECT_ROOT} && cp ./input_struct.json {TFHE_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to copy input.json to CIRCUIT_DIR. Error code: {code}")
-    
+
     # Step 2: run arithc-to-bristol (NO NEEDED)
 
     bristol_path = TFHE_PROJECT_ROOT / "circuit.txt"
@@ -502,10 +490,9 @@ regex = "1"\n
         bristol_path,
         circuit_info_path,
         TFHE_PROJECT_ROOT,
-        circuit_name,
     )
     print(f"Generated TFHE circuit at {TFHE_CIRCUIT_DIR}")
-    
+
     # Step 4-a: run converted TFHE circuit
     st = time.time()
     outputs = run_tfhe_circuit(TFHE_PROJECT_ROOT)
