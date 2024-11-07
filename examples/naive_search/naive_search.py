@@ -1,8 +1,17 @@
 import random
+import argparse
 
 in1txt = "0.in1"
 in2txt = "0.in2"
 outtxt = "0.out"
+
+
+parser = argparse.ArgumentParser(description="ops script")
+parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u64,i64...")
+
+args = parser.parse_args()
+plain_text_data_type = args.plain_text_data_type
+
 
 N = 10
 in2_val = random.randint(1, 10)

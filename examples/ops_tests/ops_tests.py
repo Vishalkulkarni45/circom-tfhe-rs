@@ -34,7 +34,7 @@ for i in range(N):
         in1ops = in1txt + "_" + op + "["+ str(i) + "]"
         in2ops = in2txt + "_" + op + "["+ str(i) + "]"
         outops = outtxt + "_" + op + "["+ str(i) + "]"
-        
+
         inputs[in1ops] = random.randint(lower_range, upper_range)
         inputs[in2ops] = random.randint(lower_range, upper_range)
 
