@@ -125,7 +125,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
             let start_index = name.find('[').unwrap() + 1;
             let end_index = name.find(']').unwrap();
 
-Changmin Cho, [08-11-2024 10:25]
+
 let number_in_brackets = &name[start_index..end_index];
             let number_usize = number_in_brackets.parse::<usize>().unwrap();
             let index_usize = index as usize;
@@ -537,5 +537,5 @@ regex = "1"\n
         print("Output doesn't match. Failed.")
 
 
-    if name == '__main__':
-     main()
+if __name__ == '__main__':
+    main()

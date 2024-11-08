@@ -121,7 +121,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
         out_div.push(val1 / val2);
     }
 
-Changmin Cho, [08-11-2024 10:22]
+
 let mut out_eq: Vec<FheBool> = vec![];
     for i in 0..N {
         let val1 = FheUint16::encrypt(arrays["0.in1_eq"][i], &client_key);
@@ -232,7 +232,7 @@ let mut out_eq: Vec<FheBool> = vec![];
         outputs.insert(str, out_div[i].decrypt(&client_key));
     }
 
-Changmin Cho, [08-11-2024 10:22]
+
 for i in 0..N {
         let str: String = String::from("0.out_eq") + "[" + &i.to_string() + "]";
         outputs.insert(str, out_eq[i].decrypt(&client_key) as u16);
