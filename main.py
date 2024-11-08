@@ -79,9 +79,9 @@ struct Constants {open_bracket}
 
 #[derive(Debug, Deserialize)]
 struct InputData {open_bracket}
-    input_name_to_wire_index: HashMap<String, u32>,
+    input_name_to_wire_index: HashMap<String, {plain_text_data_type}>,
     constants: HashMap<String, Constants>,
-    output_name_to_wire_index: HashMap<String, u32>,
+    output_name_to_wire_index: HashMap<String, {plain_text_data_type}>,
 {close_bracket}
 
 fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
@@ -125,7 +125,8 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
             let start_index = name.find('[').unwrap() + 1;
             let end_index = name.find(']').unwrap();
 
-            let number_in_brackets = &name[start_index..end_index];
+Changmin Cho, [08-11-2024 10:25]
+let number_in_brackets = &name[start_index..end_index];
             let number_usize = number_in_brackets.parse::<usize>().unwrap();
             let index_usize = index as usize;
             assert!(
@@ -155,21 +156,21 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
 """
 
 #  Decrypt the output wire and save it to output.json
-    output_code = """
+    output_code = f"""
     let mut output_raw: HashMap<String, {plain_text_data_type}> = HashMap::new();
-    for (name, index) in data.output_name_to_wire_index.into_iter() {
+    for (name, index) in data.output_name_to_wire_index.into_iter() {open_bracket}
         let index_usize = index as usize;
         let decrypted_result: {plain_text_data_type} = wires[index_usize]
             .as_ref()
             .unwrap()
             .decrypt(&client_key);
         output_raw.insert(name, decrypted_result);
-    }
+    {close_bracket}
     let file = File::create("output.json")?;
     serde_json::to_writer(file, &output_raw)?;
 
     Ok(())
-}
+{close_bracket}
 """
     total_wires = 0
 
@@ -184,8 +185,8 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
 
 
     nth_struct_ele = 0
-    # Generates the Input struct along with its helper function `struct_to_vec`
-    # `struct_to_vec` converts struct to nested vector
+    # Generates the Input struct along with its helper function struct_to_vec
+    # struct_to_vec converts struct to nested vector
     for k, v in input_name_to_wire_index.items():
         if ']' in k:
             after_dot = k.split('.')[1]
@@ -229,7 +230,8 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
         # Skip the next line
         next(f)
 
-        # Read the gate lines
+
+# Read the gate lines
         gates: list[Gate] = []
         for line in f:
             line = line.split()
@@ -246,7 +248,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
             gates.append(Gate(num_inputs, num_outputs, gate_type, inputs_wires, output_wire))
     assert len(gates) == num_gates
     # Make inputs to circuit (not wires!!) from the user config
-    # Initialize a list `inputs` with `num_wires` with value=None
+    # Initialize a list inputs with num_wires with value=None
     inputs_str_list = []
     # Fill in the constants
     for _, o in constants.items():
@@ -414,14 +416,15 @@ regex = "1"\n
         raise ValueError(f"Failed to run {circuit_name}.py. Error code: {code}")
     
     # step 1c: make a modified input
-    # Assume `data` is a dictionary parsed from JSON
+    # Assume data is a dictionary parsed from JSON
     with open(circuit_dir / 'input.json', 'r') as f:
         data = json.load(f)
 
     key_regex = re.compile(r"^(?P<base>\d+\.[a-zA-Z0-9_]+)\[(?P<index>\d+)\]$")
     array_regex = re.compile(r"\[\d+\]")
 
-    # Separate parsed data into a nested dictionary for arrays and single values for scalars
+
+# Separate parsed data into a nested dictionary for arrays and single values for scalars
     arrays = defaultdict(lambda: [])
     scalars = {}
 
@@ -448,7 +451,7 @@ regex = "1"\n
                 scalars[key] = int(value)
 
 
-# Converts the input.json to input_struct.json which can be seralised  to `input_struct` by the rust
+# Converts the input.json to input_struct.json which can be seralised  to input_struct by the rust
     json_string = "{\n"
     for key, value in arrays.items():
         # Check if the value is a list
@@ -519,6 +522,7 @@ regex = "1"\n
     # Step 4-b: run original TFHE circuit
     print(f"\n\n\nBENCH RAW MP-SPDZ circuit at {TFHE_RAW_CIRCUIT_DIR}")
 
+
     st = time.time()
     raw_outputs = run_tfhe_circuit(TFHE_RAW_PROJECT_ROOT)
     print(f"\n\n\n========= Raw Computation has finished =========\n\n")
@@ -533,5 +537,5 @@ regex = "1"\n
         print("Output doesn't match. Failed.")
 
 
-if __name__ == '__main__':
-    main()
+    if name == '__main__':
+     main()
