@@ -8,25 +8,25 @@ Circom-tfhe-rs allows user to perform TFHE arithmetizations by writing Circom co
 
 ## Supported Circom Type and Op
 
-| Type                 | Op                             | Supported |
-| -------------------- | ------------------------------ | :-------: |
-| **Int** (sint, cint) | `+`      Addition              |     ✅     |
-|                      | `/`      Division              |     ✅     |
-|                      | `==`     Equality              |     ✅     |
-|                      | `>`      Greater Than          |     ✅     |
-|                      | `>=`     Greater Than or Equal |     ✅     |
-|                      | `<`      Less Than             |     ✅     |
-|                      | `<=`     Less Than or Equal    |     ✅     | 
-|                      | `*`   Multiplication           |     ✅     |
-|                      | `!=` Not Equal                 |     ✅     |
-|                      | `-`  Subtraction               |     ✅     |
-|                      | `**` Exponentiation            |     ❌     |
-|                      | `<<` Shift Left                |     ✅     |
-|                      | `>>` Shift Right               |     ✅     |
-|                      | `^`  Bitwise XOR               |     ✅     |
-|                      | `\|` Bitwise OR                |     ✅     |
-|                      | `&`  Bitwise AND               |     ✅     |
-|                      | `%`  Modulo                    |     ✅     |
+| Type                 | Op                             |   FheUint  |  FheInt  |
+| -------------------- | ------------------------------ | :-------:  | :-------:|
+| **Int** (sint, cint) | `+`      Addition              |     ✅     |     ✅     |
+|                      | `/`      Division              |     ✅     |     ✅     |
+|                      | `==`     Equality              |     ✅     |     ✅     |
+|                      | `>`      Greater Than          |     ✅     |     ✅     |
+|                      | `>=`     Greater Than or Equal |     ✅     |     ✅     |
+|                      | `<`      Less Than             |     ✅     |     ✅     |
+|                      | `<=`     Less Than or Equal    |     ✅     |     ✅     |
+|                      | `*`   Multiplication           |     ✅     |     ✅     |
+|                      | `!=` Not Equal                 |     ✅     |     ✅     |
+|                      | `-`  Subtraction               |     ✅     |     ✅     |
+|                      | `**` Exponentiation            |     ❌     |     ❌     |
+|                      | `<<` Shift Left                |     ✅     |     ❌     |
+|                      | `>>` Shift Right               |     ✅     |     ❌     |
+|                      | `^`  Bitwise XOR               |     ✅     |     ✅     |
+|                      | `\|` Bitwise OR                |     ✅     |     ✅     |
+|                      | `&`  Bitwise AND               |     ✅     |     ✅     |
+|                      | `%`  Modulo                    |     ✅     |     ✅     |
 
 
 
@@ -92,7 +92,8 @@ You can run these examples by following the instructions in the root directory.
 # Go back to the root directory of circom-tfhe-rs
 cd ../circom-tfhe-rs
 mkdir outputs
-python main.py {circuit_name}
+#Before running this you need to change the raw tfhe code plain and cipher text data type manunal
+python main.py {circuit_name} {plain_text_data_type} {cipher_text_data_type}
 ```
 - `{circuit_name}` is the name of the circuit you want to run. Can either be `ops_tests` or `naive_search`.
 - Intermediate files will be stored in the `outputs/{circuit_name}` directory.
