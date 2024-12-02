@@ -337,12 +337,21 @@ def main():
     parser = argparse.ArgumentParser(description="Compile circom to JSON and Bristol and circuit info files.")
     parser.add_argument("circuit_name", type=str, help="The name of the circuit (used for input/output file naming)")
     parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u64,i64...")
-    parser.add_argument("cipher_text_data_type", type=str, help="Cipher text data type like FheUint64,FheInt64...")
 
     args = parser.parse_args()
     circuit_name = args.circuit_name
     plain_text_data_type = args.plain_text_data_type
-    cipher_text_data_type = args.cipher_text_data_type
+    cipher_text_data_type = ""
+
+    if plain_text_data_type[0] == 'u':
+        cipher_text_data_type = f"FheUint{plain_text_data_type[1:]}"
+
+    elif plain_text_data_type[0] == 'i':
+        cipher_text_data_type = f"FheInt{plain_text_data_type[1:]}"
+
+    else:
+        print("Incorrect data type; it should be u8, u16, u64 ..  or i8, i16 ..")
+        quit()
 
     # defining directory
     PROJECT_ROOT = Path(__file__).parent
