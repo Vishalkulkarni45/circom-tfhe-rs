@@ -1,6 +1,6 @@
 # Circom-tfhe-rs
 
-Circom-tfhe-rs allows user to perform TFHE arithmetizations by writing Circom code using the zama's tfhe-rs framework. Circom code is compiled into an arithmetic circuit using circom-2-arithc and then translated gate by gate to the corresponding tfhe-rs operators.
+Circom-tfhe-rs enables users to generate a TFHE circuit that corresponds to the arithmetization of a Circom circuit. In simpler terms, it translates Circom circuits into their TFHE equivalents. Circom code is compiled into an arithmetic circuit using circom-2-arithc and then translated gate by gate to the corresponding tfhe-rs operators.
 
 **NOTE:** Now circom-2-arithc also conveniently outputs the Bristol format with corresponding circuit_info (hence the json_arbistol is not necessary anymore).
 
@@ -93,7 +93,7 @@ You can run these examples by following the instructions in the root directory.
 cd ../circom-tfhe-rs
 mkdir outputs
 #Before running this you need to change the raw tfhe code plain and cipher text data type manunal
-python main.py {circuit_name} {plain_text_data_type} {cipher_text_data_type}
+python main.py {circuit_name} {plain_text_data_type} 
 ```
 - `{circuit_name}` is the name of the circuit you want to run. Can either be `ops_tests` or `naive_search`.
 - Intermediate files will be stored in the `outputs/{circuit_name}` directory.
@@ -117,3 +117,5 @@ python main.py {circuit_name} {plain_text_data_type} {cipher_text_data_type}
    - Copy `input.json` and `input_struct.json` in `outputs/{circuit_name}` and `outputs/{circuit_name}_raw`
 5. Using bristol fashion circuit, generate tfhe-rs code.
 6. Run converted tfhe-rs code, and compare it with model tfhe-rs code.
+   - It initially compares the output of the generated TFHE circuit with that of the manually created TFHE circuit.
+   - It also compares the output of the generated TFHE circuit with the functionality executed using unencrypted methods (via native Rust , which is present in circuit_name_raw folder) 
