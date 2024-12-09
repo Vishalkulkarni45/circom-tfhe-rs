@@ -6,27 +6,27 @@ Circom-tfhe-rs enables users to generate a TFHE circuit that corresponds to the 
 
 
 
-## Supported Circom Type and Op
+## Supported Circom  Op
 
-| Type                 | Op                             |   FheUint  |  FheInt  |
-| -------------------- | ------------------------------ | :-------:  | :-------:|
-| **Int** (sint, cint) | `+`      Addition              |     ✅     |     ✅     |
-|                      | `/`      Division              |     ✅     |     ✅     |
-|                      | `==`     Equality              |     ✅     |     ✅     |
-|                      | `>`      Greater Than          |     ✅     |     ✅     |
-|                      | `>=`     Greater Than or Equal |     ✅     |     ✅     |
-|                      | `<`      Less Than             |     ✅     |     ✅     |
-|                      | `<=`     Less Than or Equal    |     ✅     |     ✅     |
-|                      | `*`   Multiplication           |     ✅     |     ✅     |
-|                      | `!=` Not Equal                 |     ✅     |     ✅     |
-|                      | `-`  Subtraction               |     ✅     |     ✅     |
-|                      | `**` Exponentiation            |     ❌     |     ❌     |
-|                      | `<<` Shift Left                |     ✅     |     ❌     |
-|                      | `>>` Shift Right               |     ✅     |     ❌     |
-|                      | `^`  Bitwise XOR               |     ✅     |     ✅     |
-|                      | `\|` Bitwise OR                |     ✅     |     ✅     |
-|                      | `&`  Bitwise AND               |     ✅     |     ✅     |
-|                      | `%`  Modulo                    |     ✅     |     ✅     |
+| Op                             |   FheUint  |  FheInt  |
+| ------------------------------ | :-------:  | :-------:|
+| `+`      Addition              |     ✅     |     ✅     |
+| `/`      Division              |     ✅     |     ✅     |
+| `==`     Equality              |     ✅     |     ✅     |
+| `>`      Greater Than          |     ✅     |     ✅     |
+| `>=`     Greater Than or Equal |     ✅     |     ✅     |
+| `<`      Less Than             |     ✅     |     ✅     |
+| `<=`     Less Than or Equal    |     ✅     |     ✅     |
+| `*`   Multiplication           |     ✅     |     ✅     |
+| `!=` Not Equal                 |     ✅     |     ✅     |
+| `-`  Subtraction               |     ✅     |     ✅     |
+| `**` Exponentiation            |     ❌     |     ❌     |
+| `<<` Shift Left                |     ✅     |     ❌     |
+| `>>` Shift Right               |     ✅     |     ❌     |
+| `^`  Bitwise XOR               |     ✅     |     ✅     |
+| `\|` Bitwise OR                |     ✅     |     ✅     |
+| `&`  Bitwise AND               |     ✅     |     ✅     |
+| `%`  Modulo                    |     ✅     |     ✅     |
 
 
 
