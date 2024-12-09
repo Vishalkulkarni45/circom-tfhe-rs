@@ -390,8 +390,15 @@ def main():
     new_dependency = """
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"  # Optional, for JSON support
-tfhe = { version = "0.8.4", features = [ "boolean", "shortint", "integer", "aarch64-unix" ] }
 regex = "1"
+
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+tfhe = { version = "0.8.7", features = [ "integer", "x86_64-unix" ] }
+
+[target.'cfg(target_arch = "arm")'.dependencies]
+tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
+
 \n
     """
     with open(TFHE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
