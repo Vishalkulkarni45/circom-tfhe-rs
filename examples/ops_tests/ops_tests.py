@@ -61,7 +61,7 @@ use serde_json::Value;
 
 
 fn main()  -> Result<(), Box<dyn std::error::Error>> {
-    const N:usize = 5;
+    const N:usize = 1;
 
     let config = ConfigBuilder::default().build();
 
@@ -81,12 +81,12 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
     let array_re = Regex::new(r"\[\d+\]").unwrap();
     
     // Separate parsed data into a nested HashMap or single values
-    let mut arrays: HashMap<String, Vec<u16>> = HashMap::new();
-    let mut scalars: HashMap<String, u16> = HashMap::new();
+    let mut arrays: HashMap<String, Vec<u128>> = HashMap::new();
+    let mut scalars: HashMap<String, u128> = HashMap::new();
 
     for (key, value) in data {
         // Check if the value can be converted to u64
-        if let Some(int_value) = value.as_u64() {
+        if let Some(int_value) = value.as_str().and_then(|s| s.parse::<u128>().ok()) {
             if array_re.is_match(&key) {
                 if let Some(caps) = re.captures(&key) {
                     // If key is an array type, get the name and index
@@ -98,11 +98,11 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
                     arrays.entry(name.to_string())
                           .or_insert_with(Vec::new)
                           .resize(N, 0);  // Ensure vector is long enough
-                    arrays.get_mut(name).unwrap()[*index] = int_value as u16;
+                    arrays.get_mut(name).unwrap()[*index] = int_value ;
                 }
             }
             else {
-                scalars.insert(key, int_value as u16);
+                scalars.insert(key, int_value );
             }
         }
     }
@@ -220,7 +220,7 @@ let mut out_eq: Vec<FheBool> = vec![];
         out_and.push(val1 & val2);
     }
     
-    let mut outputs: HashMap<String, u16> = HashMap::new();
+    let mut outputs: HashMap<String, u128> = HashMap::new();
 
     for i in 0..N {
         let str: String = String::from("0.out_add") + "[" + &i.to_string() + "]";
@@ -235,27 +235,27 @@ let mut out_eq: Vec<FheBool> = vec![];
 
 for i in 0..N {
         let str: String = String::from("0.out_eq") + "[" + &i.to_string() + "]";
-        outputs.insert(str, out_eq[i].decrypt(&client_key) as u16);
+        outputs.insert(str, out_eq[i].decrypt(&client_key) as u128);
     }
 
     for i in 0..N {
         let str: String = String::from("0.out_gt") + "[" + &i.to_string() + "]";
-        outputs.insert(str, out_gt[i].decrypt(&client_key) as u16);
+        outputs.insert(str, out_gt[i].decrypt(&client_key) as u128);
     }
 
     for i in 0..N {
         let str: String = String::from("0.out_geq") + "[" + &i.to_string() + "]";
-        outputs.insert(str, out_geq[i].decrypt(&client_key) as u16);
+        outputs.insert(str, out_geq[i].decrypt(&client_key) as u128);
     }
 
     for i in 0..N {
         let str: String = String::from("0.out_lt") + "[" + &i.to_string() + "]";
-        outputs.insert(str, out_lt[i].decrypt(&client_key) as u16);
+        outputs.insert(str, out_lt[i].decrypt(&client_key) as u128);
     }
 
     for i in 0..N {
         let str: String = String::from("0.out_leq") + "[" + &i.to_string() + "]";
-        outputs.insert(str, out_leq[i].decrypt(&client_key) as u16);
+        outputs.insert(str, out_leq[i].decrypt(&client_key) as u128);
     }
 
     for i in 0..N {
@@ -280,7 +280,7 @@ for i in 0..N {
 
     for i in 0..N {
         let str: String = String::from("0.out_neq") + "[" + &i.to_string() + "]";
-        outputs.insert(str, out_neq[i].decrypt(&client_key) as u16);
+        outputs.insert(str, out_neq[i].decrypt(&client_key) as u128);
     }
 
     for i in 0..N {

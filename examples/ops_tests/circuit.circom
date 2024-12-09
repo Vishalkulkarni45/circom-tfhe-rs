@@ -171,4 +171,4 @@ template mpspdz(N) {
     }   
 }
 
-component main = mpspdz(5);
+component main = mpspdz(1);

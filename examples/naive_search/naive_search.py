@@ -7,13 +7,13 @@ outtxt = "0.out"
 
 
 parser = argparse.ArgumentParser(description="ops script")
-parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u64,i64...")
+parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u128,i64...")
 
 args = parser.parse_args()
 plain_text_data_type = args.plain_text_data_type
 
 
-N = 10
+N = 5
 in2_val = random.randint(1, 10)
 
 inputs = {}
@@ -46,7 +46,7 @@ use tfhe::{generate_keys, set_server_key, ConfigBuilder, FheBool};
 use serde_json::Value;
 
 fn main()  -> Result<(), Box<dyn std::error::Error>> {
-    const N:usize = 10;
+    const N:usize = 5;
 
     let config = ConfigBuilder::default().build();
 
@@ -66,12 +66,12 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
     let array_re = Regex::new(r"\[\d+\]").unwrap();
     
     // Separate parsed data into a nested HashMap or single values
-    let mut arrays: HashMap<String, Vec<u64>> = HashMap::new();
-    let mut scalars: HashMap<String, u64> = HashMap::new();
+    let mut arrays: HashMap<String, Vec<u128>> = HashMap::new();
+    let mut scalars: HashMap<String, u128> = HashMap::new();
 
     for (key, value) in data {
-        // Check if the value can be converted to i64
-        if let Some(int_value) = value.as_u64() {
+        // Check if the value can be converted to u128
+      if let Some(int_value) = value.as_str().and_then(|s| s.parse::<u128>().ok()) {
             if array_re.is_match(&key) {
                 if let Some(caps) = re.captures(&key) {
                     // If key is an array type, get the name and index
@@ -92,7 +92,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut cnt = FheUint64::encrypt(0 as u64, &client_key);
+    let mut cnt = FheUint64::encrypt(0 as u128, &client_key);
     for i in 0..N {
         let val1 = FheUint64::encrypt(arrays["0.in1"][i], &client_key);
         let val2 = FheUint64::encrypt(scalars["0.in2"], &client_key);
@@ -100,10 +100,10 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
         cnt = cnt + bool_val;
     }
 
-    let mut outputs: HashMap<String, u64> = HashMap::new();
+    let mut outputs: HashMap<String, u128> = HashMap::new();
     let str: String = String::from("0.out");
-    let y:u64 = cnt.decrypt(&client_key);
-    outputs.insert(str, y as u64);
+    let y:u128 = cnt.decrypt(&client_key);
+    outputs.insert(str, y as u128);
 
     let output_file = "output.json";
 
