@@ -107,8 +107,9 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
     let input_struct: InputStruct = serde_json::from_str(&contents)?;
     let ele_to_idx = struct_members_to_index();
 
-    let mut wires:[Option<{cipher_text_data_type}>; N ] = from_fn(|_| None); 
+    let mut wires:[Option<{cipher_text_data_type}>; N ] = from_fn(|_| None);
 
+    //Client encrypts the inputs and provides the encrypted data, along with the server and client keys.
     let (enc_input, client_key, server_keys) = client_enc(input_struct, &mut wires)?;
 
     
@@ -119,6 +120,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
     // Deserialize the JSON data
     let data: InputData = serde_json::from_str(&raw_data).unwrap();
 
+    // Server take the encrypted input and server key to perform the operations on the encrypted data
        server_compute(
         enc_input,
         server_keys,
@@ -129,22 +131,6 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
 
 """
 
-#  Decrypt the output wire and save it to output.json
-    output_code = f"""
-    let mut output_raw: HashMap<String, {plain_text_data_type}> = HashMap::new();
-    for (name, index) in data.output_name_to_wire_index.into_iter() {open_bracket}
-        let index_usize = index as usize;
-        let decrypted_result: {plain_text_data_type} = wires[index_usize]
-            .as_ref()
-            .unwrap()
-            .decrypt(&client_key);
-        output_raw.insert(name, decrypted_result);
-    {close_bracket}
-    let file = File::create("output.json")?;
-    serde_json::to_writer(file, &output_raw)?;
-
-   
-"""
     total_wires = 0
 
     with open(circuit_info_path, 'r') as f:
@@ -269,6 +255,7 @@ use {circuit_name}::{open_bracket}struct_members_to_index, InputStruct{close_bra
 
     {default_code}
 
+ //Decrypt the output wire and save it to output.json
  decrypt_output(data.output_name_to_wire_index, &wires, client_key)?;
 
  Ok(())
@@ -369,7 +356,7 @@ pub fn decrypt_output<const N: usize>(
     server_code = f"""
 use std::collections::HashMap;
 
-use tfhe::{open_bracket}prelude::{open_bracket}CastInto, FheEq{close_bracket}, set_server_key, {cipher_text_data_type}, ServerKey{close_bracket};
+use tfhe::{open_bracket}prelude::{open_bracket}CastInto, FheEq,FheOrd{close_bracket}, set_server_key, {cipher_text_data_type}, ServerKey{close_bracket};
 
 pub fn server_compute<const N: usize>(
     enc_input: Vec<Vec<{cipher_text_data_type}>>,
@@ -441,7 +428,7 @@ def run_tfhe_circuit(
     tfhe_project_root: Path,
 ) -> str:
     # Compile and run tfhe in the local machine
-    command = f'cd {tfhe_project_root} && cargo build --release && cargo fmt --all && cargo run --release'
+    command = f'cd {tfhe_project_root} && cargo build --release  && cargo run --release'
 
     try:
         result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -489,6 +476,13 @@ def main():
     EXAMPLES_DIR = PROJECT_ROOT / 'examples'
     circuit_dir = EXAMPLES_DIR / circuit_name
     circom_path = circuit_dir / 'circuit.circom'
+
+
+    #Create outputs folder 
+
+    code = os.system(f"cd {PROJECT_ROOT} && mkdir outputs")
+    if code != 0:
+        raise ValueError("Failed to outputs folder")
 
     # Step 0: generate Rust directory in the TFHE-RS repo; 2 repositories
     directory_path = TFHE_PROJECT_ROOT
@@ -550,7 +544,7 @@ regex = "1"\n
     code = os.system(f"cd {CIRCOM_2_ARITHC_PROJECT_ROOT} && ./target/release/circom-2-arithc --input {circom_path} --output {TFHE_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to compile circom. Error code: {code}")
-    
+
     # Step 1b: run circuit script
     # python {circuit}.py
     code = os.system(f"cd {circuit_dir} && python3 {circuit_name}.py {plain_text_data_type}")
@@ -648,6 +642,10 @@ regex = "1"\n
         circuit_name
     )
     print(f"Generated TFHE circuit at {TFHE_CIRCUIT_DIR}")
+
+    code = os.system(f"cd {TFHE_PROJECT_ROOT} && cargo fmt --all")
+    if code != 0:
+        raise ValueError(f"Failed to compile circom. Error code: {code}")
 
     # Step 4-a: run converted TFHE circuit
     st = time.time()
