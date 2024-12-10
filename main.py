@@ -64,6 +64,12 @@ def generate_tfhe_circuit(
     if code != 0:
         raise ValueError("Failed to create client folder")
 
+    # Create Server folder
+    code = os.system(f"cd {tfhe_project_root} &&  mkdir server && cd server && touch server.rs")
+    if code != 0:
+        raise ValueError("Failed to create server folder")
+
+
     open_bracket = '{'
     close_bracket = '}'
 #Includes default code, such as setting keys, assigning inputs to the wire, etc.
@@ -73,11 +79,11 @@ use std::fs::File;
 use std::io::Read;
 use std::collections::HashMap;
 use std::array::from_fn;
-use {circuit_name}::client::client_enc;
+use {circuit_name}::client::{open_bracket}client_enc, decrypt_output{close_bracket};
 
 
 use tfhe::prelude::*;
-use tfhe::{open_bracket}generate_keys, set_server_key, ConfigBuilder, {cipher_text_data_type}{close_bracket};
+use tfhe::{cipher_text_data_type};
 
 #[derive(Deserialize, Debug)]
 struct Constants {open_bracket}
@@ -101,13 +107,11 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
     let input_struct: InputStruct = serde_json::from_str(&contents)?;
     let ele_to_idx = struct_members_to_index();
 
-
-    let (enc_input, client_key, server_keys) = client_enc(input_struct)?;
-
-        
-        
     let mut wires:[Option<{cipher_text_data_type}>; N ] = from_fn(|_| None); 
 
+    let (enc_input, client_key, server_keys) = client_enc(input_struct, &mut wires)?;
+
+    
     let mut file = File::open("circuit_info.json")?;
     let mut raw_data = String::new();
     file.read_to_string(&mut raw_data)?;
@@ -115,40 +119,13 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
     // Deserialize the JSON data
     let data: InputData = serde_json::from_str(&raw_data).unwrap();
 
-    // Populate wires based on input_name_to_wire_index
-    for (name, index) in data.input_name_to_wire_index.into_iter() {open_bracket}
-        // parse string: name
-        if name.contains("["){open_bracket}
-            let start_index = name.find('[').unwrap() + 1;
-            let end_index = name.find(']').unwrap();
-
-
-    let number_in_brackets = &name[start_index..end_index];
-            let number_usize = number_in_brackets.parse::<usize>().unwrap();
-            let index_usize = index as usize;
-            assert!(
-                wires[index_usize].is_none(),
-                "Wire[{open_bracket}{close_bracket}] is already filled",
-                index_usize
-            );
-            let data_member = &name[2..start_index-1];
-            let idx = ele_to_idx.get(data_member).unwrap();
-            wires[index_usize] = Some(enc_input[*idx][number_usize].clone());
-        {close_bracket}
-        else {open_bracket}
-            let data_member = &name[2..];
-            let idx = ele_to_idx.get(data_member).unwrap();
-            assert!(enc_input[*idx].len()==1);
-            let index_usize = index as usize;
-            assert!(
-                wires[index_usize].is_none(),
-                "Wire[{open_bracket}{close_bracket}] is already filled",
-                index_usize
-            );
-            wires[index_usize] = Some(enc_input[*idx][0].clone());
-        {close_bracket}
-    {close_bracket}    
-    set_server_key(server_keys);
+       server_compute(
+        enc_input,
+        server_keys,
+        data.input_name_to_wire_index,
+        ele_to_idx,
+        &mut wires,
+    );
 
 """
 
@@ -166,8 +143,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
     let file = File::create("output.json")?;
     serde_json::to_writer(file, &output_raw)?;
 
-    Ok(())
-{close_bracket}
+   
 """
     total_wires = 0
 
@@ -286,24 +262,34 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
     circuit_code = f"""
 const N:usize = {total_wires};\n
 
+use {circuit_name}::server::server_compute;
+
 use {circuit_name}::{open_bracket}struct_members_to_index, InputStruct{close_bracket};
 
 
     {default_code}
-    {inputs_str_list}
-    {gates_str}
 
-{output_code}
-"""   
+ decrypt_output(data.output_name_to_wire_index, &wires, client_key)?;
+
+ Ok(())
+{close_bracket}
+"""
     client_code = f"""
 
-use tfhe::{open_bracket}generate_keys, prelude::FheTryEncrypt, ClientKey, ConfigBuilder, {cipher_text_data_type}, ServerKey{close_bracket};
+use std::{open_bracket}collections::HashMap, fs::File{close_bracket};
+
+use tfhe::{open_bracket}
+    generate_keys,
+    prelude::{open_bracket}FheDecrypt, FheTryEncrypt{close_bracket},
+    ClientKey, ConfigBuilder, {cipher_text_data_type}, ServerKey,
+{close_bracket};
 
 use crate::{open_bracket}struct_to_vec, InputStruct{close_bracket};
 
 
-pub fn client_enc(
+pub fn client_enc<const N:usize>(
     raw_input: InputStruct,
+    wires: &mut [Option<{cipher_text_data_type}>; N] 
 ) -> Result<(Vec<Vec<{cipher_text_data_type}>>, ClientKey, ServerKey), Box<dyn std::error::Error>> {open_bracket}
     let config = ConfigBuilder::default().build();
 
@@ -322,7 +308,27 @@ pub fn client_enc(
         {close_bracket})
         .collect::<Result<Vec<_>, _>>()?;
 
+    {inputs_str_list}
+
     Ok((enc_input, client_key, server_keys))
+{close_bracket}
+
+
+pub fn decrypt_output<const N: usize>(
+    output_name_to_wire_index: HashMap<String,{plain_text_data_type}>,
+    wires: &[Option<{cipher_text_data_type}>; N],
+    client_key: ClientKey,
+) -> Result<(), Box<dyn std::error::Error>> {open_bracket}
+    let mut output_raw: HashMap<String, {plain_text_data_type}> = HashMap::new();
+    for (name, index) in output_name_to_wire_index.into_iter() {open_bracket}
+        let index_usize = index as usize;
+        let decrypted_result: {plain_text_data_type} = wires[index_usize].as_ref().unwrap().decrypt(&client_key);
+        output_raw.insert(name, decrypted_result);
+    {close_bracket}
+    let file = File::create("output.json")?;
+    serde_json::to_writer(file, &output_raw)?;
+
+    Ok(())
 {close_bracket}
 
 """
@@ -334,6 +340,9 @@ pub fn client_enc(
 
     #[path = "../client/client.rs"]
     pub mod client;
+
+    #[path = "../server/server.rs"]
+    pub mod server;
 
     #[derive(Debug, Deserialize)]
     pub struct InputStruct {open_bracket}
@@ -356,11 +365,62 @@ pub fn client_enc(
 
 
     """
+
+    server_code = f"""
+use std::collections::HashMap;
+
+use tfhe::{open_bracket}prelude::{open_bracket}CastInto, FheEq{close_bracket}, set_server_key, {cipher_text_data_type}, ServerKey{close_bracket};
+
+pub fn server_compute<const N: usize>(
+    enc_input: Vec<Vec<{cipher_text_data_type}>>,
+    server_keys: ServerKey,
+    input_name_to_wire_index: HashMap<String, {plain_text_data_type}>,
+    ele_to_idx: HashMap<String, usize>,
+    wires: &mut [Option<{cipher_text_data_type}>; N],
+) {open_bracket}
+    // Populate wires based on input_name_to_wire_index
+    for (name, index) in input_name_to_wire_index.into_iter() {open_bracket}
+        // parse string: name
+        if name.contains("[") {open_bracket}
+            let start_index = name.find('[').unwrap() + 1;
+            let end_index = name.find(']').unwrap();
+
+            let number_in_brackets = &name[start_index..end_index];
+            let number_usize = number_in_brackets.parse::<usize>().unwrap();
+            let index_usize = index as usize;
+            assert!(
+                wires[index_usize].is_none(),
+                "Wire[{open_bracket}{close_bracket}] is already filled",
+                index_usize
+            );
+            let data_member = &name[2..start_index - 1];
+            let idx = ele_to_idx.get(data_member).unwrap();
+            wires[index_usize] = Some(enc_input[*idx][number_usize].clone());
+        {close_bracket} else {open_bracket}
+            let data_member = &name[2..];
+            let idx = ele_to_idx.get(data_member).unwrap();
+            assert!(enc_input[*idx].len() == 1);
+            let index_usize = index as usize;
+            assert!(
+                wires[index_usize].is_none(),
+                "Wire[{open_bracket}{close_bracket}] is already filled",
+                index_usize
+            );
+            wires[index_usize] = Some(enc_input[*idx][0].clone());
+        {close_bracket}
+    {close_bracket}
+    set_server_key(server_keys);
+
+    {gates_str}
+    
+{close_bracket}
+
+    """
     code = os.system(f"cd {tfhe_project_root}/src && touch lib.rs")
     if code != 0:
         raise ValueError("Failed to create lib.rs")
 
-    
+
     tfhe_lib_path = tfhe_project_root / 'src' / 'lib.rs'
     with open(tfhe_lib_path, 'w') as f:
         f.write(lib_code)
@@ -368,6 +428,10 @@ pub fn client_enc(
     tfhe_client_path = tfhe_project_root / 'client' / 'client.rs'
     with open(tfhe_client_path, 'w') as f:
         f.write(client_code)
+
+    tfhe_server_path = tfhe_project_root / 'server' / 'server.rs'
+    with open(tfhe_server_path, 'w') as f:
+        f.write(server_code)
 
     out_tfhe_path = tfhe_project_root / 'src' / 'main.rs'
     with open(out_tfhe_path, 'w') as f:
