@@ -81,6 +81,8 @@ We have two examples available:
 - [ops_tests](./examples/ops_tests/) - a benchmark of supported operations
 - [naive_search](./examples/naive_search/) - a benchmark of naive search
 
+For both the examples ,We successfully executed them for FheUint8, FheUint16, and FheUint64 on a 4-core machine with 16GB of RAM, but encountered memory limitations when attempting FheUint128.
+
 In both examples, you will find the following files in each example directory:
 
 - `circuit.circom` - the circom code representing the circuit
@@ -89,9 +91,6 @@ In both examples, you will find the following files in each example directory:
 You can run these examples by following the instructions in the root directory.
 
 ```bash
-# Go back to the root directory of circom-tfhe-rs
-cd ../circom-tfhe-rs
-mkdir outputs
 #Before running this you need to change the raw tfhe code plain and cipher text data type manunal
 python main.py {circuit_name} {plain_text_data_type} 
 ```
@@ -116,6 +115,8 @@ python main.py {circuit_name} {plain_text_data_type}
    - After generating `raw_circuit` tfhe-rs code, copy it into `outputs/{circuit_name}_raw`
    - Copy `input.json` and `input_struct.json` in `outputs/{circuit_name}` and `outputs/{circuit_name}_raw`
 5. Using bristol fashion circuit, generate tfhe-rs code.
+   - It divides the operation into two folder: client and server.
+   - Client code is responside for encrypting the inputs and decrypting the output
+   - Server code handles performing operations on the encrypted inputs.
 6. Run converted tfhe-rs code, and compare it with model tfhe-rs code.
-   - It initially compares the output of the generated TFHE circuit with that of the manually created TFHE circuit.
-   - It also compares the output of the generated TFHE circuit with the functionality executed using unencrypted methods (via native Rust , which is present in circuit_name_raw folder) 
+   - It compares the output of the generated TFHE circuit with that of the manually created TFHE circuit.
