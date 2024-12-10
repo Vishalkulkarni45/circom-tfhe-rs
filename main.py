@@ -55,8 +55,14 @@ def generate_tfhe_circuit(
     circuit_info_path: Path,
     tfhe_project_root: Path,
     plain_text_data_type: str,
-    cipher_text_data_type: str
+    cipher_text_data_type: str,
+    circuit_name:str
 ):
+
+    # Create Client folder
+    code = os.system(f"cd {tfhe_project_root} &&  mkdir client && cd client && touch client.rs")
+    if code != 0:
+        raise ValueError("Failed to create client folder")
 
     open_bracket = '{'
     close_bracket = '}'
@@ -67,6 +73,8 @@ use std::fs::File;
 use std::io::Read;
 use std::collections::HashMap;
 use std::array::from_fn;
+use {circuit_name}::client::client_enc;
+
 
 use tfhe::prelude::*;
 use tfhe::{open_bracket}generate_keys, set_server_key, ConfigBuilder, {cipher_text_data_type}{close_bracket};
@@ -86,29 +94,18 @@ struct InputData {open_bracket}
 
 fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
 
-    let config = ConfigBuilder::default().build();
+    let mut file = File::open("input_struct.json")?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
 
-    // Key generation
-    let (client_key, server_keys) = generate_keys(config);
+    let input_struct: InputStruct = serde_json::from_str(&contents)?;
+    let ele_to_idx = struct_members_to_index();
 
-        let mut file = File::open("input_struct.json")?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
 
-        let input_struct: InputStruct = serde_json::from_str(&contents)?;
-        let (inputs,ele_to_idx) = struct_to_vec(input_struct);
+    let (enc_input, client_key, server_keys) = client_enc(input_struct)?;
+
         
-        let enc_input: Result<Vec<Vec<{cipher_text_data_type}>>, _> = inputs
-            .into_iter()
-            .map(|input| {open_bracket}
-                input
-                    .into_iter()
-                    .map(|ith_input| {cipher_text_data_type}::try_encrypt(ith_input, &client_key))
-                    .collect()
-            {close_bracket})
-            .collect();
-    
-    let enc_input = enc_input?; 
+        
     let mut wires:[Option<{cipher_text_data_type}>; N ] = from_fn(|_| None); 
 
     let mut file = File::open("circuit_info.json")?;
@@ -126,7 +123,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
             let end_index = name.find(']').unwrap();
 
 
-let number_in_brackets = &name[start_index..end_index];
+    let number_in_brackets = &name[start_index..end_index];
             let number_usize = number_in_brackets.parse::<usize>().unwrap();
             let index_usize = index as usize;
             assert!(
@@ -289,24 +286,89 @@ let number_in_brackets = &name[start_index..end_index];
     circuit_code = f"""
 const N:usize = {total_wires};\n
 
-#[derive(Debug, Deserialize)]
-pub struct InputStruct {open_bracket}
-    {input_struct}
-{close_bracket}
+use {circuit_name}::{open_bracket}struct_members_to_index, InputStruct{close_bracket};
 
-pub fn struct_to_vec(input:InputStruct) -> (Vec<Vec<{plain_text_data_type}>>,HashMap<String,usize>){open_bracket}
-let mut data_members_index = HashMap::new();
 
-{ele_to_idx}
-    (vec![{struct_to_nes_vec}],data_members_index)
-{close_bracket}
-
-{default_code}
+    {default_code}
     {inputs_str_list}
     {gates_str}
 
 {output_code}
+"""   
+    client_code = f"""
+
+use tfhe::{open_bracket}generate_keys, prelude::FheTryEncrypt, ClientKey, ConfigBuilder, {cipher_text_data_type}, ServerKey{close_bracket};
+
+use crate::{open_bracket}struct_to_vec, InputStruct{close_bracket};
+
+
+pub fn client_enc(
+    raw_input: InputStruct,
+) -> Result<(Vec<Vec<{cipher_text_data_type}>>, ClientKey, ServerKey), Box<dyn std::error::Error>> {open_bracket}
+    let config = ConfigBuilder::default().build();
+
+    // Key generation
+    let (client_key, server_keys) = generate_keys(config);
+
+    let inputs = struct_to_vec(raw_input);
+
+    let enc_input: Vec<Vec<{cipher_text_data_type}>> = inputs
+        .into_iter()
+        .map(|input|{open_bracket}
+            input
+                .into_iter()
+                .map(|ith_input| {cipher_text_data_type}::try_encrypt(ith_input, &client_key))
+                .collect::<Result<Vec<_>, _>>()
+        {close_bracket})
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok((enc_input, client_key, server_keys))
+{close_bracket}
+
 """
+    
+
+    lib_code = f"""
+    use std::collections::HashMap;
+    use serde::Deserialize;
+
+    #[path = "../client/client.rs"]
+    pub mod client;
+
+    #[derive(Debug, Deserialize)]
+    pub struct InputStruct {open_bracket}
+        {input_struct}
+    {close_bracket}
+
+    pub fn struct_members_to_index()  ->  HashMap<String,usize> {open_bracket}
+    let mut data_members_index = HashMap::new();
+
+    {ele_to_idx}
+    data_members_index
+
+    {close_bracket}
+
+    pub fn struct_to_vec(input:InputStruct) -> Vec<Vec<{plain_text_data_type}>> {open_bracket}
+
+        vec![{struct_to_nes_vec}]
+
+    {close_bracket}
+
+
+    """
+    code = os.system(f"cd {tfhe_project_root}/src && touch lib.rs")
+    if code != 0:
+        raise ValueError("Failed to create lib.rs")
+
+    
+    tfhe_lib_path = tfhe_project_root / 'src' / 'lib.rs'
+    with open(tfhe_lib_path, 'w') as f:
+        f.write(lib_code)
+
+    tfhe_client_path = tfhe_project_root / 'client' / 'client.rs'
+    with open(tfhe_client_path, 'w') as f:
+        f.write(client_code)
+
     out_tfhe_path = tfhe_project_root / 'src' / 'main.rs'
     with open(out_tfhe_path, 'w') as f:
         f.write(circuit_code)
@@ -518,7 +580,8 @@ regex = "1"\n
         circuit_info_path,
         TFHE_PROJECT_ROOT,
         plain_text_data_type,
-        cipher_text_data_type
+        cipher_text_data_type,
+        circuit_name
     )
     print(f"Generated TFHE circuit at {TFHE_CIRCUIT_DIR}")
 
@@ -529,7 +592,7 @@ regex = "1"\n
     print(f"Outputs: {outputs}")
     et = time.time()
     elapsed_time = et - st
-    print('\n\n\nCIRCOM Execution time:', elapsed_time, 'seconds')
+    print('\n\n\n Generated Tfhe-rs Execution time:', elapsed_time, 'seconds')
 
     benchmark_dir = TFHE_PROJECT_ROOT / 'benchmark.json'
     with open(benchmark_dir, 'w') as fp:
