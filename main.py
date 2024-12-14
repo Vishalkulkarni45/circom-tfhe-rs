@@ -551,6 +551,11 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
 
 \n
     """
+    native_dependency = """
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"  # Optional, for JSON support
+regex = "1"
+    """
     with open(TFHE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
         file.write(new_dependency)
 
@@ -572,7 +577,7 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
         raise RuntimeError(f"Failed to create the Rust project '{project_name_native}'.") from None
 
     with open(TFHE_NATIVE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
-        file.write(new_dependency)
+        file.write(native_dependency)
 
     source_file = circuit_dir / 'native_code.rs'
     destination_file = TFHE_NATIVE_PROJECT_ROOT/ 'src' / 'main.rs'
@@ -654,11 +659,14 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
     destination_file = TFHE_RAW_CIRCUIT_DIR / 'main.rs'
     shutil.copy(source_file, destination_file)
 
-    # Step 1d: copy input.json into raw_circuit directory and circuit directory
+    # Step 1d: copy input.json into raw_circuit, native_code  and circuit directory
     code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_RAW_PROJECT_ROOT} && cp ./input_struct.json {TFHE_RAW_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to copy input.json to RAW_CIRCUIT_DIR. Error code: {code}")
     code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_PROJECT_ROOT} && cp ./input_struct.json {TFHE_PROJECT_ROOT}")
+    if code != 0:
+        raise ValueError(f"Failed to copy input.json to CIRCUIT_DIR. Error code: {code}")
+    code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_NATIVE_PROJECT_ROOT} && cp ./input_struct.json {TFHE_NATIVE_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to copy input.json to CIRCUIT_DIR. Error code: {code}")
 
