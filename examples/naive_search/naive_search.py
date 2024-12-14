@@ -115,7 +115,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
 
 '''
 
-native_code = '''
+native_raw_code = '''
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
@@ -155,7 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 '''
 
 with open('native_code.rs', 'w') as fp:
-    fp.write(native_code)
+    fp.write(native_raw_code)
 
 with open('main.rs', 'w') as fp:
     fp.write(raw_code)
