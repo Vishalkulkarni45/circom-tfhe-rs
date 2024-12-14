@@ -115,5 +115,47 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
 
 '''
 
+native_code = '''
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::Read;
+
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct InputStruct {
+    pub in2: u8,
+    pub in1: Vec<u8>,
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut file = File::open("input_struct.json")?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    let input_struct: InputStruct = serde_json::from_str(&contents)?;
+
+    let mut cnt = 0;
+
+    for num in input_struct.in1 {
+        if num == input_struct.in2 {
+            cnt += 1;
+        }
+    }
+    let mut output_raw: HashMap<String, u8> = HashMap::new();
+
+    output_raw.insert(String::from("0.out"), cnt);
+
+    let file = File::create("output.json")?;
+    serde_json::to_writer(file, &output_raw)?;
+
+    Ok(())
+}
+
+'''
+
+with open('native_code.rs', 'w') as fp:
+    fp.write(native_code)
+
 with open('main.rs', 'w') as fp:
     fp.write(raw_code)
