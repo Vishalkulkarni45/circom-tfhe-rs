@@ -112,7 +112,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
     //Client encrypts the inputs and provides the encrypted data, along with the server and client keys.
     let (enc_input, client_key, server_keys) = client_enc(input_struct, &mut wires)?;
 
-    
+
     let mut file = File::open("circuit_info.json")?;
     let mut raw_data = String::new();
     file.read_to_string(&mut raw_data)?;
@@ -190,7 +190,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
         next(f)
 
 
-# Read the gate lines
+        # Read the gate lines
         gates: list[Gate] = []
         for line in f:
             line = line.split()
@@ -276,7 +276,7 @@ use crate::{open_bracket}struct_to_vec, InputStruct{close_bracket};
 
 pub fn client_enc<const N:usize>(
     raw_input: InputStruct,
-    wires: &mut [Option<{cipher_text_data_type}>; N] 
+    wires: &mut [Option<{cipher_text_data_type}>; N]
 ) -> Result<(Vec<Vec<{cipher_text_data_type}>>, ClientKey, ServerKey), Box<dyn std::error::Error>> {open_bracket}
     let config = ConfigBuilder::default().build();
 
@@ -319,7 +319,7 @@ pub fn decrypt_output<const N: usize>(
 {close_bracket}
 
 """
-    
+
 
     lib_code = f"""
     use std::collections::HashMap;
@@ -399,7 +399,7 @@ pub fn server_compute<const N: usize>(
     set_server_key(server_keys);
 
     {gates_str}
-    
+
 {close_bracket}
 
     """
@@ -431,12 +431,22 @@ def run_tfhe_circuit(
     command = f'cd {tfhe_project_root} && cargo build --release  && cargo run --release'
 
     try:
-        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # Capture and print the output/error for debugging
+        result = subprocess.run(
+            command,
+            shell=True,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        print("Build output:", result.stdout)
+        print("Build errors:", result.stderr)
     except subprocess.CalledProcessError as e:
-        print("Error:", e.stderr)
-
-    if result.returncode != 0:
-        raise ValueError(f"Failed to run TFHE. Error code: {result.returncode}\n{result.stderr}")
+        print("Build failed!")
+        print("stdout:", e.stdout)
+        print("stderr:", e.stderr)
+        raise ValueError(f"Failed to run TFHE: {e=}")
 
     output_dir = tfhe_project_root / 'output.json'
     with open(output_dir, 'r') as file:
@@ -449,7 +459,7 @@ def run_tfhe_circuit(
 def main():
     parser = argparse.ArgumentParser(description="Compile circom to JSON and Bristol and circuit info files.")
     parser.add_argument("circuit_name", type=str, help="The name of the circuit (used for input/output file naming)")
-    parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u64,i64...")
+    parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u8, u16, u64 ..  or i8, i16 ..")
 
     args = parser.parse_args()
     circuit_name = args.circuit_name
@@ -478,9 +488,9 @@ def main():
     circom_path = circuit_dir / 'circuit.circom'
 
 
-    #Create outputs folder 
+    # Create outputs folder
 
-    code = os.system(f"cd {PROJECT_ROOT} && mkdir outputs")
+    code = os.system(f"cd {PROJECT_ROOT} && mkdir -p outputs")
     if code != 0:
         raise ValueError("Failed to outputs folder")
 
@@ -534,8 +544,13 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
     new_dependency = """
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"  # Optional, for JSON support
-tfhe = { version = "0.8.4", features = [ "boolean", "shortint", "integer", "aarch64-unix" ] }
-regex = "1"\n
+regex = "1"
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+tfhe = { version = "0.8.7", features = [ "boolean", "shortint", "integer", "x86_64-unix" ] }
+
+[target.'cfg(target_arch = "arm")'.dependencies]
+tfhe = { version = "0.8.7", features = [ "boolean", "shortint", "integer", "aarch64-unix" ] }
     """
     with open(TFHE_RAW_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
         file.write(new_dependency)
@@ -550,7 +565,7 @@ regex = "1"\n
     code = os.system(f"cd {circuit_dir} && python3 {circuit_name}.py {plain_text_data_type}")
     if code != 0:
         raise ValueError(f"Failed to run {circuit_name}.py. Error code: {code}")
-    
+
     # step 1c: make a modified input
     # Assume data is a dictionary parsed from JSON
     with open(circuit_dir / 'input.json', 'r') as f:
@@ -560,7 +575,7 @@ regex = "1"\n
     array_regex = re.compile(r"\[\d+\]")
 
 
-# Separate parsed data into a nested dictionary for arrays and single values for scalars
+    # Separate parsed data into a nested dictionary for arrays and single values for scalars
     arrays = defaultdict(lambda: [])
     scalars = {}
 
@@ -587,7 +602,7 @@ regex = "1"\n
                 scalars[key] = int(value)
 
 
-# Converts the input.json to input_struct.json which can be seralised  to input_struct by the rust
+    # Converts the input.json to input_struct.json which can be serialised to input_struct by the rust
     json_string = "{\n"
     for key, value in arrays.items():
         # Check if the value is a list
