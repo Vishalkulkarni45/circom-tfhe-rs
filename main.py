@@ -510,7 +510,7 @@ def main():
     TFHE_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}'
     TFHE_CIRCUIT_DIR = TFHE_PROJECT_ROOT / 'src'
     TFHE_RAW_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}_raw'
-    TFHE_NATIVE_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}_native'
+    NATIVE_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}_native'
     TFHE_RAW_CIRCUIT_DIR = TFHE_RAW_PROJECT_ROOT / 'src'
     EXAMPLES_DIR = PROJECT_ROOT / 'examples'
     circuit_dir = EXAMPLES_DIR / circuit_name
@@ -527,7 +527,7 @@ def main():
 
     delete_folder_if_exists(TFHE_RAW_PROJECT_ROOT)
 
-    delete_folder_if_exists(TFHE_NATIVE_PROJECT_ROOT)
+    delete_folder_if_exists(NATIVE_PROJECT_ROOT)
 
     project_name = circuit_name
     try:
@@ -576,7 +576,7 @@ regex = "1"
     except subprocess.CalledProcessError:
         raise RuntimeError(f"Failed to create the Rust project '{project_name_native}'.") from None
 
-    with open(TFHE_NATIVE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
+    with open(NATIVE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
         file.write(native_dependency)
 
 
@@ -663,14 +663,15 @@ regex = "1"
     code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_PROJECT_ROOT} && cp ./input_struct.json {TFHE_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to copy input.json to CIRCUIT_DIR. Error code: {code}")
-    code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_NATIVE_PROJECT_ROOT} && cp ./input_struct.json {TFHE_NATIVE_PROJECT_ROOT}")
+    code = os.system(f"cd {circuit_dir} && cp ./input.json {NATIVE_PROJECT_ROOT} && cp ./input_struct.json {NATIVE_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to copy input.json to CIRCUIT_DIR. Error code: {code}")
 
+    # Step 1e: copy generate_native code to main.rs of NATIVE_PROJECT_ROOT
     source_file = circuit_dir / 'native_code.rs'
-    destination_file = TFHE_NATIVE_PROJECT_ROOT/ 'src' / 'main.rs'
+    destination_file = NATIVE_PROJECT_ROOT/ 'src' / 'main.rs'
     shutil.copy(source_file, destination_file)
-    
+
     # Step 2: run arithc-to-bristol (NO NEEDED)
 
     bristol_path = TFHE_PROJECT_ROOT / "circuit.txt"
@@ -717,7 +718,7 @@ regex = "1"
     print('\n\n\nRAW Execution time:', elapsed_time, 'seconds')
 
     # Step 4-c: run native code
-    print(f"\n\n\nBENCH native at {TFHE_NATIVE_PROJECT_ROOT}")
+    print(f"\n\n\nBENCH native at {NATIVE_PROJECT_ROOT}")
 
     st = time.time()
     native_outputs = run_tfhe_circuit(TFHE_RAW_PROJECT_ROOT)
