@@ -455,8 +455,36 @@ def run_tfhe_circuit(
 
     return data
 
+def delete_folder_if_exists(directory: str):
+    """
+    Delete the specified directory and all of its contents.
+
+    Parameters
+    ----------
+    directory : str
+        The path to the directory that should be deleted if exists.
+    """
+    if os.path.isdir(directory):
+        shutil.rmtree(directory)
+        print(f"Directory '{directory}' has been deleted.")
+
 
 def main():
+    """
+    This script takes a circuit name and a plaintext data type as arguments, and then converts a Circom circuit into its equivalent TFHE-RS circuit.
+    The resulting TFHE-RS circuit can be used with the TFHE-RS library for homomorphic encryption operations.
+
+    Arguments
+    ---------
+    circuit_name : str
+        The name of the Circom circuit file (without extension).
+    plaintext_data_type : str
+        The plaintext data type (e.g. 'u8', 'u16', 'i32') used in the resulting TFHE-RS circuit.
+
+    Example
+    -------
+        python main.py my_circuit u8
+    """
     parser = argparse.ArgumentParser(description="Compile circom to JSON and Bristol and circuit info files.")
     parser.add_argument("circuit_name", type=str, help="The name of the circuit (used for input/output file naming)")
     parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u8, u16, u64 ..  or i8, i16 ..")
@@ -482,6 +510,7 @@ def main():
     TFHE_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}'
     TFHE_CIRCUIT_DIR = TFHE_PROJECT_ROOT / 'src'
     TFHE_RAW_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}_raw'
+    TFHE_NATIVE_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}_native'
     TFHE_RAW_CIRCUIT_DIR = TFHE_RAW_PROJECT_ROOT / 'src'
     EXAMPLES_DIR = PROJECT_ROOT / 'examples'
     circuit_dir = EXAMPLES_DIR / circuit_name
@@ -494,20 +523,11 @@ def main():
     if code != 0:
         raise ValueError("Failed to outputs folder")
 
-    # Step 0: generate Rust directory in the TFHE-RS repo; 2 repositories
-    directory_path = TFHE_PROJECT_ROOT
+    delete_folder_if_exists(TFHE_PROJECT_ROOT)
 
-    # Check if the directory exists
-    if os.path.exists(directory_path) and os.path.isdir(directory_path):
-    # Delete the directory and its contents
-        shutil.rmtree(directory_path)
-        print(f"Directory '{directory_path}' has been deleted.")
+    delete_folder_if_exists(TFHE_RAW_PROJECT_ROOT)
 
-    directory_path_raw = TFHE_RAW_PROJECT_ROOT
-    if os.path.exists(directory_path_raw) and os.path.isdir(directory_path_raw):
-    # Delete the directory and its contents
-        shutil.rmtree(directory_path_raw)
-        print(f"Directory '{directory_path_raw}' has been deleted.")
+    delete_folder_if_exists(TFHE_NATIVE_PROJECT_ROOT)
 
     project_name = circuit_name
     try:
@@ -543,6 +563,20 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
 
     with open(TFHE_RAW_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
         file.write(new_dependency)
+
+    project_name_native = f'{circuit_name}_native'
+    try:
+        subprocess.run(["cargo", "new", project_name_native], check=True, cwd=PROJECT_ROOT / 'outputs')
+        print(f"Rust project '{project_name_native}' created successfully.")
+    except subprocess.CalledProcessError:
+        raise RuntimeError(f"Failed to create the Rust project '{project_name_native}'.") from None
+
+    with open(TFHE_NATIVE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
+        file.write(new_dependency)
+
+    source_file = circuit_dir / 'native_code.rs'
+    destination_file = TFHE_NATIVE_PROJECT_ROOT/ 'src' / 'main.rs'
+    shutil.copy(source_file, destination_file)
 
     # Step 1a: run circom-2-arithc
     code = os.system(f"cd {CIRCOM_2_ARITHC_PROJECT_ROOT} && ./target/release/circom-2-arithc --input {circom_path} --output {TFHE_PROJECT_ROOT}")
@@ -646,7 +680,7 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
 
     code = os.system(f"cd {TFHE_PROJECT_ROOT} && cargo fmt --all")
     if code != 0:
-        raise ValueError(f"Failed to compile circom. Error code: {code}")
+        raise ValueError(f"Failed to compile generate tfhe-rs code. Error code: {code}")
 
     # Step 4-a: run converted TFHE circuit
     st = time.time()
@@ -662,7 +696,7 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
         json.dump({"computation_time" : elapsed_time}, fp)
 
     # Step 4-b: run original TFHE circuit
-    print(f"\n\n\nBENCH RAW MP-SPDZ circuit at {TFHE_RAW_CIRCUIT_DIR}")
+    print(f"\n\n\nBENCH RAW Tfhe-rs circuit at {TFHE_RAW_CIRCUIT_DIR}")
 
 
     st = time.time()
@@ -673,7 +707,18 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
     elapsed_time = et - st
     print('\n\n\nRAW Execution time:', elapsed_time, 'seconds')
 
-    if outputs == raw_outputs:
+    # Step 4-c: run native code
+    print(f"\n\n\nBENCH native at {TFHE_NATIVE_PROJECT_ROOT}")
+
+    st = time.time()
+    native_outputs = run_tfhe_circuit(TFHE_RAW_PROJECT_ROOT)
+    print(f"\n\n\n========= Native Computation has finished =========\n\n")
+    print(f"Outputs: {native_outputs}")
+    et = time.time()
+    elapsed_time = et - st
+    print('\n\n\nRAW Execution time:', elapsed_time, 'seconds')
+
+    if outputs == raw_outputs == native_outputs:
         print("Output matches. Succeed.")
     else:
         print("Output doesn't match. Failed.")
