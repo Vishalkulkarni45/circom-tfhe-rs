@@ -579,9 +579,6 @@ regex = "1"
     with open(TFHE_NATIVE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
         file.write(native_dependency)
 
-    source_file = circuit_dir / 'native_code.rs'
-    destination_file = TFHE_NATIVE_PROJECT_ROOT/ 'src' / 'main.rs'
-    shutil.copy(source_file, destination_file)
 
     # Step 1a: run circom-2-arithc
     code = os.system(f"cd {CIRCOM_2_ARITHC_PROJECT_ROOT} && ./target/release/circom-2-arithc --input {circom_path} --output {TFHE_PROJECT_ROOT}")
@@ -670,6 +667,10 @@ regex = "1"
     if code != 0:
         raise ValueError(f"Failed to copy input.json to CIRCUIT_DIR. Error code: {code}")
 
+    source_file = circuit_dir / 'native_code.rs'
+    destination_file = TFHE_NATIVE_PROJECT_ROOT/ 'src' / 'main.rs'
+    shutil.copy(source_file, destination_file)
+    
     # Step 2: run arithc-to-bristol (NO NEEDED)
 
     bristol_path = TFHE_PROJECT_ROOT / "circuit.txt"

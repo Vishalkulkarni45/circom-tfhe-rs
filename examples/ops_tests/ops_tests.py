@@ -571,5 +571,5 @@ for i in 0..N {
 with open('native_code.rs', 'w') as fp:
     fp.write(native_raw_code)
 
-with open('raw_circuit.rs', 'w') as fp:
+with open('main.rs', 'w') as fp:
     fp.write(raw_code)
