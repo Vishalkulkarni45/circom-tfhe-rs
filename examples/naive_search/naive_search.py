@@ -115,5 +115,5 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
 
 '''
 
-with open('raw_circuit.rs', 'w') as fp:
+with open('main.rs', 'w') as fp:
     fp.write(raw_code)

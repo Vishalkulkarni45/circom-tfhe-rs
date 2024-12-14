@@ -526,7 +526,7 @@ regex = "1"
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 tfhe = { version = "0.8.7", features = [ "integer", "x86_64-unix" ] }
 
-[target.'cfg(target_arch = "arm")'.dependencies]
+[target.'cfg(target_arch = "aarch64")'.dependencies]
 tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
 
 \n
@@ -541,17 +541,6 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
     except subprocess.CalledProcessError:
         raise RuntimeError(f"Failed to create the Rust project '{project_name_raw}'.") from None
 
-    new_dependency = """
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"  # Optional, for JSON support
-regex = "1"
-
-[target.'cfg(target_arch = "x86_64")'.dependencies]
-tfhe = { version = "0.8.7", features = [ "boolean", "shortint", "integer", "x86_64-unix" ] }
-
-[target.'cfg(target_arch = "arm")'.dependencies]
-tfhe = { version = "0.8.7", features = [ "boolean", "shortint", "integer", "aarch64-unix" ] }
-    """
     with open(TFHE_RAW_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
         file.write(new_dependency)
 
@@ -626,9 +615,6 @@ tfhe = { version = "0.8.7", features = [ "boolean", "shortint", "integer", "aarc
     with open(circuit_dir / 'input_struct.json', "w") as json_file:
         json_file.write(json_string)
 
-    # Step 1d: copy raw circuit into output folder
-    os.chdir(circuit_dir)
-    os.rename('raw_circuit.rs', 'main.rs')
 
     source_file = circuit_dir / 'main.rs'
     destination_file = TFHE_RAW_CIRCUIT_DIR / 'main.rs'
