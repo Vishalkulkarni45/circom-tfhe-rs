@@ -71,7 +71,7 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
 
     for (key, value) in data {
         // Check if the value can be converted to u128
-      if let Some(int_value) = value.as_str().and_then(|s| s.parse::<u128>().ok()) {
+      if let Some(int_value) = value.as_u64() {
             if array_re.is_match(&key) {
                 if let Some(caps) = re.captures(&key) {
                     // If key is an array type, get the name and index
@@ -83,11 +83,11 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
                     arrays.entry(name.to_string())
                           .or_insert_with(Vec::new)
                           .resize(N, 0);  // Ensure vector is long enough
-                    arrays.get_mut(name).unwrap()[*index] = int_value;
+                    arrays.get_mut(name).unwrap()[*index] = int_value as u8;
                 }
             }
             else {
-                scalars.insert(key, int_value);
+                scalars.insert(key, int_value as u8);
             }
         }
     }
