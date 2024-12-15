@@ -120,3 +120,4 @@ python main.py {circuit_name} {plain_text_data_type}
    - Server code handles performing operations on the encrypted inputs.
 6. Run converted tfhe-rs code, and compare it with model tfhe-rs code.
    - It compares the output of the generated TFHE circuit with that of the manually created TFHE circuit.
+   - It also compares the output of the generated TFHE circuit with the functionality executed using unencrypted methods (via native Rust , which is present in circuit_name_raw folder)
