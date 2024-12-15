@@ -35,7 +35,7 @@ use std::collections::HashMap;
 use regex::Regex;
 use serde_json::to_string;
 use serde_json::to_writer;
-use tfhe::FheUint64;
+use tfhe::FheUint8;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -66,11 +66,11 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
     let array_re = Regex::new(r"\[\d+\]").unwrap();
     
     // Separate parsed data into a nested HashMap or single values
-    let mut arrays: HashMap<String, Vec<u128>> = HashMap::new();
-    let mut scalars: HashMap<String, u128> = HashMap::new();
+    let mut arrays: HashMap<String, Vec<u8>> = HashMap::new();
+    let mut scalars: HashMap<String, u8> = HashMap::new();
 
     for (key, value) in data {
-        // Check if the value can be converted to u128
+        // Check if the value can be converted to u8
       if let Some(int_value) = value.as_u64() {
             if array_re.is_match(&key) {
                 if let Some(caps) = re.captures(&key) {
@@ -92,18 +92,18 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let mut cnt = FheUint64::encrypt(0 as u128, &client_key);
+    let mut cnt = FheUint8::encrypt(0 as u8, &client_key);
     for i in 0..N {
-        let val1 = FheUint64::encrypt(arrays["0.in1"][i], &client_key);
-        let val2 = FheUint64::encrypt(scalars["0.in2"], &client_key);
-        let bool_val:FheUint64 = val1.eq(&val2).cast_into();
+        let val1 = FheUint8::encrypt(arrays["0.in1"][i], &client_key);
+        let val2 = FheUint8::encrypt(scalars["0.in2"], &client_key);
+        let bool_val:FheUint8 = val1.eq(&val2).cast_into();
         cnt = cnt + bool_val;
     }
 
-    let mut outputs: HashMap<String, u128> = HashMap::new();
+    let mut outputs: HashMap<String, u8> = HashMap::new();
     let str: String = String::from("0.out");
-    let y:u128 = cnt.decrypt(&client_key);
-    outputs.insert(str, y as u128);
+    let y:u8 = cnt.decrypt(&client_key);
+    outputs.insert(str, y as u8);
 
     let output_file = "output.json";
 
