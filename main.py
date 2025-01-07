@@ -55,8 +55,20 @@ def generate_tfhe_circuit(
     circuit_info_path: Path,
     tfhe_project_root: Path,
     plain_text_data_type: str,
-    cipher_text_data_type: str
+    cipher_text_data_type: str,
+    circuit_name:str
 ):
+
+    # Create Client folder
+    code = os.system(f"cd {tfhe_project_root} &&  mkdir client && cd client && touch client.rs")
+    if code != 0:
+        raise ValueError("Failed to create client folder")
+
+    # Create Server folder
+    code = os.system(f"cd {tfhe_project_root} &&  mkdir server && cd server && touch server.rs")
+    if code != 0:
+        raise ValueError("Failed to create server folder")
+
 
     open_bracket = '{'
     close_bracket = '}'
@@ -67,9 +79,11 @@ use std::fs::File;
 use std::io::Read;
 use std::collections::HashMap;
 use std::array::from_fn;
+use {circuit_name}::client::{open_bracket}client_enc, decrypt_output{close_bracket};
+
 
 use tfhe::prelude::*;
-use tfhe::{open_bracket}generate_keys, set_server_key, ConfigBuilder, {cipher_text_data_type}{close_bracket};
+use tfhe::{cipher_text_data_type};
 
 #[derive(Deserialize, Debug)]
 struct Constants {open_bracket}
@@ -86,30 +100,18 @@ struct InputData {open_bracket}
 
 fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
 
-    let config = ConfigBuilder::default().build();
+    let mut file = File::open("input_struct.json")?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
 
-    // Key generation
-    let (client_key, server_keys) = generate_keys(config);
+    let input_struct: InputStruct = serde_json::from_str(&contents)?;
+    let ele_to_idx = struct_members_to_index();
 
-        let mut file = File::open("input_struct.json")?;
-        let mut contents = String::new();
-        file.read_to_string(&mut contents)?;
+    let mut wires:[Option<{cipher_text_data_type}>; N ] = from_fn(|_| None);
 
-        let input_struct: InputStruct = serde_json::from_str(&contents)?;
-        let (inputs,ele_to_idx) = struct_to_vec(input_struct);
-        
-        let enc_input: Result<Vec<Vec<{cipher_text_data_type}>>, _> = inputs
-            .into_iter()
-            .map(|input| {open_bracket}
-                input
-                    .into_iter()
-                    .map(|ith_input| {cipher_text_data_type}::try_encrypt(ith_input, &client_key))
-                    .collect()
-            {close_bracket})
-            .collect();
-    
-    let enc_input = enc_input?; 
-    let mut wires:[Option<{cipher_text_data_type}>; N ] = from_fn(|_| None); 
+    //Client encrypts the inputs and provides the encrypted data, along with the server and client keys.
+    let (enc_input, client_key, server_keys) = client_enc(input_struct, &mut wires)?;
+
 
     let mut file = File::open("circuit_info.json")?;
     let mut raw_data = String::new();
@@ -118,60 +120,17 @@ fn main()  -> Result<(), Box<dyn std::error::Error>> {open_bracket}
     // Deserialize the JSON data
     let data: InputData = serde_json::from_str(&raw_data).unwrap();
 
-    // Populate wires based on input_name_to_wire_index
-    for (name, index) in data.input_name_to_wire_index.into_iter() {open_bracket}
-        // parse string: name
-        if name.contains("["){open_bracket}
-            let start_index = name.find('[').unwrap() + 1;
-            let end_index = name.find(']').unwrap();
-
-
-let number_in_brackets = &name[start_index..end_index];
-            let number_usize = number_in_brackets.parse::<usize>().unwrap();
-            let index_usize = index as usize;
-            assert!(
-                wires[index_usize].is_none(),
-                "Wire[{open_bracket}{close_bracket}] is already filled",
-                index_usize
-            );
-            let data_member = &name[2..start_index-1];
-            let idx = ele_to_idx.get(data_member).unwrap();
-            wires[index_usize] = Some(enc_input[*idx][number_usize].clone());
-        {close_bracket}
-        else {open_bracket}
-            let data_member = &name[2..];
-            let idx = ele_to_idx.get(data_member).unwrap();
-            assert!(enc_input[*idx].len()==1);
-            let index_usize = index as usize;
-            assert!(
-                wires[index_usize].is_none(),
-                "Wire[{open_bracket}{close_bracket}] is already filled",
-                index_usize
-            );
-            wires[index_usize] = Some(enc_input[*idx][0].clone());
-        {close_bracket}
-    {close_bracket}    
-    set_server_key(server_keys);
+    // Server take the encrypted input and server key to perform the operations on the encrypted data
+       server_compute(
+        enc_input,
+        server_keys,
+        data.input_name_to_wire_index,
+        ele_to_idx,
+        &mut wires,
+    );
 
 """
 
-#  Decrypt the output wire and save it to output.json
-    output_code = f"""
-    let mut output_raw: HashMap<String, {plain_text_data_type}> = HashMap::new();
-    for (name, index) in data.output_name_to_wire_index.into_iter() {open_bracket}
-        let index_usize = index as usize;
-        let decrypted_result: {plain_text_data_type} = wires[index_usize]
-            .as_ref()
-            .unwrap()
-            .decrypt(&client_key);
-        output_raw.insert(name, decrypted_result);
-    {close_bracket}
-    let file = File::create("output.json")?;
-    serde_json::to_writer(file, &output_raw)?;
-
-    Ok(())
-{close_bracket}
-"""
     total_wires = 0
 
     with open(circuit_info_path, 'r') as f:
@@ -231,7 +190,7 @@ let number_in_brackets = &name[start_index..end_index];
         next(f)
 
 
-# Read the gate lines
+        # Read the gate lines
         gates: list[Gate] = []
         for line in f:
             line = line.split()
@@ -289,24 +248,178 @@ let number_in_brackets = &name[start_index..end_index];
     circuit_code = f"""
 const N:usize = {total_wires};\n
 
-#[derive(Debug, Deserialize)]
-pub struct InputStruct {open_bracket}
-    {input_struct}
+use {circuit_name}::server::server_compute;
+
+use {circuit_name}::{open_bracket}struct_members_to_index, InputStruct{close_bracket};
+
+
+    {default_code}
+
+ //Decrypt the output wire and save it to output.json
+ decrypt_output(data.output_name_to_wire_index, &wires, client_key)?;
+
+ Ok(())
 {close_bracket}
+"""
+    client_code = f"""
 
-pub fn struct_to_vec(input:InputStruct) -> (Vec<Vec<{plain_text_data_type}>>,HashMap<String,usize>){open_bracket}
-let mut data_members_index = HashMap::new();
+use std::{open_bracket}collections::HashMap, fs::File{close_bracket};
 
-{ele_to_idx}
-    (vec![{struct_to_nes_vec}],data_members_index)
-{close_bracket}
+use tfhe::{open_bracket}
+    generate_keys,
+    prelude::{open_bracket}FheDecrypt, FheTryEncrypt{close_bracket},
+    ClientKey, ConfigBuilder, {cipher_text_data_type}, ServerKey,
+{close_bracket};
 
-{default_code}
+use crate::{open_bracket}struct_to_vec, InputStruct{close_bracket};
+
+
+pub fn client_enc<const N:usize>(
+    raw_input: InputStruct,
+    wires: &mut [Option<{cipher_text_data_type}>; N]
+) -> Result<(Vec<Vec<{cipher_text_data_type}>>, ClientKey, ServerKey), Box<dyn std::error::Error>> {open_bracket}
+    let config = ConfigBuilder::default().build();
+
+    // Key generation
+    let (client_key, server_keys) = generate_keys(config);
+
+    let inputs = struct_to_vec(raw_input);
+
+    let enc_input: Vec<Vec<{cipher_text_data_type}>> = inputs
+        .into_iter()
+        .map(|input|{open_bracket}
+            input
+                .into_iter()
+                .map(|ith_input| {cipher_text_data_type}::try_encrypt(ith_input, &client_key))
+                .collect::<Result<Vec<_>, _>>()
+        {close_bracket})
+        .collect::<Result<Vec<_>, _>>()?;
+
     {inputs_str_list}
+
+    Ok((enc_input, client_key, server_keys))
+{close_bracket}
+
+
+pub fn decrypt_output<const N: usize>(
+    output_name_to_wire_index: HashMap<String,{plain_text_data_type}>,
+    wires: &[Option<{cipher_text_data_type}>; N],
+    client_key: ClientKey,
+) -> Result<(), Box<dyn std::error::Error>> {open_bracket}
+    let mut output_raw: HashMap<String, {plain_text_data_type}> = HashMap::new();
+    for (name, index) in output_name_to_wire_index.into_iter() {open_bracket}
+        let index_usize = index as usize;
+        let decrypted_result: {plain_text_data_type} = wires[index_usize].as_ref().unwrap().decrypt(&client_key);
+        output_raw.insert(name, decrypted_result);
+    {close_bracket}
+    let file = File::create("output.json")?;
+    serde_json::to_writer(file, &output_raw)?;
+
+    Ok(())
+{close_bracket}
+
+"""
+
+
+    lib_code = f"""
+    use std::collections::HashMap;
+    use serde::Deserialize;
+
+    #[path = "../client/client.rs"]
+    pub mod client;
+
+    #[path = "../server/server.rs"]
+    pub mod server;
+
+    #[derive(Debug, Deserialize)]
+    pub struct InputStruct {open_bracket}
+        {input_struct}
+    {close_bracket}
+
+    pub fn struct_members_to_index()  ->  HashMap<String,usize> {open_bracket}
+    let mut data_members_index = HashMap::new();
+
+    {ele_to_idx}
+    data_members_index
+
+    {close_bracket}
+
+    pub fn struct_to_vec(input:InputStruct) -> Vec<Vec<{plain_text_data_type}>> {open_bracket}
+
+        vec![{struct_to_nes_vec}]
+
+    {close_bracket}
+
+
+    """
+
+    server_code = f"""
+use std::collections::HashMap;
+
+use tfhe::{open_bracket}prelude::{open_bracket}CastInto, FheEq,FheOrd{close_bracket}, set_server_key, {cipher_text_data_type}, ServerKey{close_bracket};
+
+pub fn server_compute<const N: usize>(
+    enc_input: Vec<Vec<{cipher_text_data_type}>>,
+    server_keys: ServerKey,
+    input_name_to_wire_index: HashMap<String, {plain_text_data_type}>,
+    ele_to_idx: HashMap<String, usize>,
+    wires: &mut [Option<{cipher_text_data_type}>; N],
+) {open_bracket}
+    // Populate wires based on input_name_to_wire_index
+    for (name, index) in input_name_to_wire_index.into_iter() {open_bracket}
+        // parse string: name
+        if name.contains("[") {open_bracket}
+            let start_index = name.find('[').unwrap() + 1;
+            let end_index = name.find(']').unwrap();
+
+            let number_in_brackets = &name[start_index..end_index];
+            let number_usize = number_in_brackets.parse::<usize>().unwrap();
+            let index_usize = index as usize;
+            assert!(
+                wires[index_usize].is_none(),
+                "Wire[{open_bracket}{close_bracket}] is already filled",
+                index_usize
+            );
+            let data_member = &name[2..start_index - 1];
+            let idx = ele_to_idx.get(data_member).unwrap();
+            wires[index_usize] = Some(enc_input[*idx][number_usize].clone());
+        {close_bracket} else {open_bracket}
+            let data_member = &name[2..];
+            let idx = ele_to_idx.get(data_member).unwrap();
+            assert!(enc_input[*idx].len() == 1);
+            let index_usize = index as usize;
+            assert!(
+                wires[index_usize].is_none(),
+                "Wire[{open_bracket}{close_bracket}] is already filled",
+                index_usize
+            );
+            wires[index_usize] = Some(enc_input[*idx][0].clone());
+        {close_bracket}
+    {close_bracket}
+    set_server_key(server_keys);
+
     {gates_str}
 
-{output_code}
-"""
+{close_bracket}
+
+    """
+    code = os.system(f"cd {tfhe_project_root}/src && touch lib.rs")
+    if code != 0:
+        raise ValueError("Failed to create lib.rs")
+
+
+    tfhe_lib_path = tfhe_project_root / 'src' / 'lib.rs'
+    with open(tfhe_lib_path, 'w') as f:
+        f.write(lib_code)
+
+    tfhe_client_path = tfhe_project_root / 'client' / 'client.rs'
+    with open(tfhe_client_path, 'w') as f:
+        f.write(client_code)
+
+    tfhe_server_path = tfhe_project_root / 'server' / 'server.rs'
+    with open(tfhe_server_path, 'w') as f:
+        f.write(server_code)
+
     out_tfhe_path = tfhe_project_root / 'src' / 'main.rs'
     with open(out_tfhe_path, 'w') as f:
         f.write(circuit_code)
@@ -315,15 +428,25 @@ def run_tfhe_circuit(
     tfhe_project_root: Path,
 ) -> str:
     # Compile and run tfhe in the local machine
-    command = f'cd {tfhe_project_root} && cargo build --release && cargo fmt --all && cargo run --release'
+    command = f'cd {tfhe_project_root} && cargo build --release  && cargo run --release'
 
     try:
-        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # Capture and print the output/error for debugging
+        result = subprocess.run(
+            command,
+            shell=True,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        print("Build output:", result.stdout)
+        print("Build errors:", result.stderr)
     except subprocess.CalledProcessError as e:
-        print("Error:", e.stderr)
-
-    if result.returncode != 0:
-        raise ValueError(f"Failed to run TFHE. Error code: {result.returncode}\n{result.stderr}")
+        print("Build failed!")
+        print("stdout:", e.stdout)
+        print("stderr:", e.stderr)
+        raise ValueError(f"Failed to run TFHE: {e=}")
 
     output_dir = tfhe_project_root / 'output.json'
     with open(output_dir, 'r') as file:
@@ -332,11 +455,39 @@ def run_tfhe_circuit(
 
     return data
 
+def delete_folder_if_exists(directory: str):
+    """
+    Delete the specified directory and all of its contents.
+
+    Parameters
+    ----------
+    directory : str
+        The path to the directory that should be deleted if exists.
+    """
+    if os.path.isdir(directory):
+        shutil.rmtree(directory)
+        print(f"Directory '{directory}' has been deleted.")
+
 
 def main():
+    """
+    This script takes a circuit name and a plaintext data type as arguments, and then converts a Circom circuit into its equivalent TFHE-RS circuit.
+    The resulting TFHE-RS circuit can be used with the TFHE-RS library for homomorphic encryption operations.
+
+    Arguments
+    ---------
+    circuit_name : str
+        The name of the Circom circuit file (without extension).
+    plaintext_data_type : str
+        The plaintext data type (e.g. 'u8', 'u16', 'i32') used in the resulting TFHE-RS circuit.
+
+    Example
+    -------
+        python main.py my_circuit u8
+    """
     parser = argparse.ArgumentParser(description="Compile circom to JSON and Bristol and circuit info files.")
     parser.add_argument("circuit_name", type=str, help="The name of the circuit (used for input/output file naming)")
-    parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u64,i64...")
+    parser.add_argument("plain_text_data_type", type=str, help="Plain text data type like u8, u16, u64 ..  or i8, i16 ..")
 
     args = parser.parse_args()
     circuit_name = args.circuit_name
@@ -359,25 +510,24 @@ def main():
     TFHE_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}'
     TFHE_CIRCUIT_DIR = TFHE_PROJECT_ROOT / 'src'
     TFHE_RAW_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}_raw'
+    NATIVE_PROJECT_ROOT = PROJECT_ROOT / 'outputs' / f'{circuit_name}_native'
     TFHE_RAW_CIRCUIT_DIR = TFHE_RAW_PROJECT_ROOT / 'src'
     EXAMPLES_DIR = PROJECT_ROOT / 'examples'
     circuit_dir = EXAMPLES_DIR / circuit_name
     circom_path = circuit_dir / 'circuit.circom'
 
-    # Step 0: generate Rust directory in the TFHE-RS repo; 2 repositories
-    directory_path = TFHE_PROJECT_ROOT
 
-    # Check if the directory exists
-    if os.path.exists(directory_path) and os.path.isdir(directory_path):
-    # Delete the directory and its contents
-        shutil.rmtree(directory_path)
-        print(f"Directory '{directory_path}' has been deleted.")
+    # Create outputs folder
 
-    directory_path_raw = TFHE_RAW_PROJECT_ROOT
-    if os.path.exists(directory_path_raw) and os.path.isdir(directory_path_raw):
-    # Delete the directory and its contents
-        shutil.rmtree(directory_path_raw)
-        print(f"Directory '{directory_path_raw}' has been deleted.")
+    code = os.system(f"cd {PROJECT_ROOT} && mkdir -p outputs")
+    if code != 0:
+        raise ValueError("Failed to outputs folder")
+
+    delete_folder_if_exists(TFHE_PROJECT_ROOT)
+
+    delete_folder_if_exists(TFHE_RAW_PROJECT_ROOT)
+
+    delete_folder_if_exists(NATIVE_PROJECT_ROOT)
 
     project_name = circuit_name
     try:
@@ -396,10 +546,15 @@ regex = "1"
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 tfhe = { version = "0.8.7", features = [ "integer", "x86_64-unix" ] }
 
-[target.'cfg(target_arch = "arm")'.dependencies]
+[target.'cfg(target_arch = "aarch64")'.dependencies]
 tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
 
 \n
+    """
+    native_dependency = """
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"  # Optional, for JSON support
+regex = "1"
     """
     with open(TFHE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
         file.write(new_dependency)
@@ -411,26 +566,31 @@ tfhe = { version = "0.8.7", features = [ "integer", "aarch64-unix" ] }
     except subprocess.CalledProcessError:
         raise RuntimeError(f"Failed to create the Rust project '{project_name_raw}'.") from None
 
-    new_dependency = """
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"  # Optional, for JSON support
-tfhe = { version = "0.8.4", features = [ "boolean", "shortint", "integer", "aarch64-unix" ] }
-regex = "1"\n
-    """
     with open(TFHE_RAW_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
         file.write(new_dependency)
+
+    project_name_native = f'{circuit_name}_native'
+    try:
+        subprocess.run(["cargo", "new", project_name_native], check=True, cwd=PROJECT_ROOT / 'outputs')
+        print(f"Rust project '{project_name_native}' created successfully.")
+    except subprocess.CalledProcessError:
+        raise RuntimeError(f"Failed to create the Rust project '{project_name_native}'.") from None
+
+    with open(NATIVE_PROJECT_ROOT / 'Cargo.toml', 'a') as file:
+        file.write(native_dependency)
+
 
     # Step 1a: run circom-2-arithc
     code = os.system(f"cd {CIRCOM_2_ARITHC_PROJECT_ROOT} && ./target/release/circom-2-arithc --input {circom_path} --output {TFHE_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to compile circom. Error code: {code}")
-    
+
     # Step 1b: run circuit script
     # python {circuit}.py
     code = os.system(f"cd {circuit_dir} && python3 {circuit_name}.py {plain_text_data_type}")
     if code != 0:
         raise ValueError(f"Failed to run {circuit_name}.py. Error code: {code}")
-    
+
     # step 1c: make a modified input
     # Assume data is a dictionary parsed from JSON
     with open(circuit_dir / 'input.json', 'r') as f:
@@ -440,7 +600,7 @@ regex = "1"\n
     array_regex = re.compile(r"\[\d+\]")
 
 
-# Separate parsed data into a nested dictionary for arrays and single values for scalars
+    # Separate parsed data into a nested dictionary for arrays and single values for scalars
     arrays = defaultdict(lambda: [])
     scalars = {}
 
@@ -467,7 +627,7 @@ regex = "1"\n
                 scalars[key] = int(value)
 
 
-# Converts the input.json to input_struct.json which can be seralised  to input_struct by the rust
+    # Converts the input.json to input_struct.json which can be serialised to input_struct by the rust
     json_string = "{\n"
     for key, value in arrays.items():
         # Check if the value is a list
@@ -491,21 +651,26 @@ regex = "1"\n
     with open(circuit_dir / 'input_struct.json', "w") as json_file:
         json_file.write(json_string)
 
-    # Step 1d: copy raw circuit into output folder
-    os.chdir(circuit_dir)
-    os.rename('raw_circuit.rs', 'main.rs')
 
     source_file = circuit_dir / 'main.rs'
     destination_file = TFHE_RAW_CIRCUIT_DIR / 'main.rs'
     shutil.copy(source_file, destination_file)
 
-    # Step 1d: copy input.json into raw_circuit directory and circuit directory
+    # Step 1d: copy input.json into raw_circuit, native_code  and circuit directory
     code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_RAW_PROJECT_ROOT} && cp ./input_struct.json {TFHE_RAW_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to copy input.json to RAW_CIRCUIT_DIR. Error code: {code}")
     code = os.system(f"cd {circuit_dir} && cp ./input.json {TFHE_PROJECT_ROOT} && cp ./input_struct.json {TFHE_PROJECT_ROOT}")
     if code != 0:
         raise ValueError(f"Failed to copy input.json to CIRCUIT_DIR. Error code: {code}")
+    code = os.system(f"cd {circuit_dir} && cp ./input.json {NATIVE_PROJECT_ROOT} && cp ./input_struct.json {NATIVE_PROJECT_ROOT}")
+    if code != 0:
+        raise ValueError(f"Failed to copy input.json to CIRCUIT_DIR. Error code: {code}")
+
+    # Step 1e: copy generate_native code to main.rs of NATIVE_PROJECT_ROOT
+    source_file = circuit_dir / 'native_code.rs'
+    destination_file = NATIVE_PROJECT_ROOT/ 'src' / 'main.rs'
+    shutil.copy(source_file, destination_file)
 
     # Step 2: run arithc-to-bristol (NO NEEDED)
 
@@ -518,9 +683,14 @@ regex = "1"\n
         circuit_info_path,
         TFHE_PROJECT_ROOT,
         plain_text_data_type,
-        cipher_text_data_type
+        cipher_text_data_type,
+        circuit_name
     )
     print(f"Generated TFHE circuit at {TFHE_CIRCUIT_DIR}")
+
+    code = os.system(f"cd {TFHE_PROJECT_ROOT} && cargo fmt --all")
+    if code != 0:
+        raise ValueError(f"Failed to compile generate tfhe-rs code. Error code: {code}")
 
     # Step 4-a: run converted TFHE circuit
     st = time.time()
@@ -529,14 +699,14 @@ regex = "1"\n
     print(f"Outputs: {outputs}")
     et = time.time()
     elapsed_time = et - st
-    print('\n\n\nCIRCOM Execution time:', elapsed_time, 'seconds')
+    print('\n\n\n Generated Tfhe-rs Execution time:', elapsed_time, 'seconds')
 
     benchmark_dir = TFHE_PROJECT_ROOT / 'benchmark.json'
     with open(benchmark_dir, 'w') as fp:
         json.dump({"computation_time" : elapsed_time}, fp)
 
     # Step 4-b: run original TFHE circuit
-    print(f"\n\n\nBENCH RAW MP-SPDZ circuit at {TFHE_RAW_CIRCUIT_DIR}")
+    print(f"\n\n\nBENCH RAW Tfhe-rs circuit at {TFHE_RAW_CIRCUIT_DIR}")
 
 
     st = time.time()
@@ -547,7 +717,18 @@ regex = "1"\n
     elapsed_time = et - st
     print('\n\n\nRAW Execution time:', elapsed_time, 'seconds')
 
-    if outputs == raw_outputs:
+    # Step 4-c: run native code
+    print(f"\n\n\nBENCH native at {NATIVE_PROJECT_ROOT}")
+
+    st = time.time()
+    native_outputs = run_tfhe_circuit(TFHE_RAW_PROJECT_ROOT)
+    print(f"\n\n\n========= Native Computation has finished =========\n\n")
+    print(f"Outputs: {native_outputs}")
+    et = time.time()
+    elapsed_time = et - st
+    print('\n\n\nRAW Execution time:', elapsed_time, 'seconds')
+
+    if outputs == raw_outputs == native_outputs:
         print("Output matches. Succeed.")
     else:
         print("Output doesn't match. Failed.")
